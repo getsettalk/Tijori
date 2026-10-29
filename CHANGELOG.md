@@ -6,6 +6,11 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Admin panel uploads: when a part fails because the connection got slower or a proxy cut it
+  (504, 499, dropped connection), the retry sends a part half the size instead of the same one,
+  so uploads keep going on connections whose speed changes.
+
 ## [1.0.1] - 2026-10-29
 
 ### Security

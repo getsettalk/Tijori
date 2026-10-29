@@ -566,11 +566,10 @@ async function uploadChunked(bucket, key, file, setProgress) {
   let offset = 0, n = 1, chunk = 2 * 1024 * 1024;
   try {
     while (offset < file.size) {
-      const end = Math.min(file.size, offset + chunk);
-      const blob = file.slice(offset, end);
-      let part, attempt = 0;
-      const t0 = performance.now();
+      let part, blob, t0, attempt = 0;
       for (;;) {
+        blob = file.slice(offset, Math.min(file.size, offset + chunk));
+        t0 = performance.now();
         try {
           part = await sendRequest(`${API}/uploads/part?${q(`&id=${id}&n=${n}`)}`, blob, "application/octet-stream",
             (loaded) => setProgress(offset + loaded));
@@ -578,13 +577,16 @@ async function uploadChunked(bucket, key, file, setProgress) {
         } catch (e) {
           // 4xx other than timeouts are final (quota, permissions, too large).
           if (++attempt >= 4 || (e.status >= 400 && e.status < 499)) throw e;
+          // The connection got slower or a proxy cut the request: retry with
+          // a smaller part so it fits in the proxy's time limit.
+          chunk = Math.max(256 * 1024, Math.floor(blob.size / 2));
           await new Promise((r) => setTimeout(r, 1000 * attempt * attempt));
         }
       }
       const secs = Math.max((performance.now() - t0) / 1000, 0.2);
       chunk = Math.max(256 * 1024, Math.min(16 * 1024 * 1024, Math.floor((blob.size / secs) * 15)));
       parts.push({ n, etag: part.etag });
-      offset = end;
+      offset += blob.size;
       n++;
     }
     return await api("POST", "/uploads/complete", { bucket, key, id, parts });
