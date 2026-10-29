@@ -425,3 +425,26 @@ func TestObjectACL(t *testing.T) {
 		}
 	}
 }
+
+// A web page uploads with a presigned URL: preflight, then PUT with Origin.
+func TestBrowserPresignedUploadCORS(t *testing.T) {
+	e := startServer(t, func(c *config.Config) { c.CORSOrigins = []string{"https://app.example.com"} })
+	if _, err := e.s3.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: aws.String("uploads")}); err != nil {
+		t.Fatal(err)
+	}
+	u, _ := s3.NewPresignClient(e.s3).PresignPutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("uploads"), Key: aws.String("from-browser.txt")})
+	pre, _ := http.NewRequest(http.MethodOptions, u.URL, nil)
+	pre.Header.Set("Origin", "https://app.example.com")
+	pre.Header.Set("Access-Control-Request-Method", "PUT")
+	resp, err := http.DefaultClient.Do(pre)
+	if err != nil || resp.StatusCode != 204 || resp.Header.Get("Access-Control-Allow-Origin") != "https://app.example.com" {
+		t.Fatalf("preflight: %v %d", err, resp.StatusCode)
+	}
+	req, _ := http.NewRequest(http.MethodPut, u.URL, strings.NewReader("hello"))
+	req.Header.Set("Origin", "https://app.example.com")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil || resp.StatusCode != 200 || resp.Header.Get("Access-Control-Allow-Origin") == "" || resp.Header.Get("ETag") == "" {
+		t.Fatalf("browser PUT: %v %d %v", err, resp.StatusCode, resp.Header)
+	}
+	resp.Body.Close()
+}

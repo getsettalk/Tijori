@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -150,7 +151,7 @@ func TestExportImport(t *testing.T) {
 		t.Fatal(err)
 	}
 	compareDirs(t, e.srv.Cfg.DataDir, fresh)
-	if fi, err := os.Stat(filepath.Join(fresh, state.FileName)); err != nil || fi.Mode().Perm() != 0o600 {
+	if fi, err := os.Stat(filepath.Join(fresh, state.FileName)); err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600) {
 		t.Fatalf("db not imported with 0600: %v", err)
 	}
 	// Importing over existing buckets needs --force.

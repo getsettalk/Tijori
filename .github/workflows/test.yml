@@ -3,35 +3,61 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "17 3 * * 1" # weekly: catch newly published Go vulnerabilities
 
 permissions:
   contents: read
 
 jobs:
   test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod # the toolchain line pins the latest secure Go
+      - run: go version
+      - name: Install ffmpeg (video tests)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: go vet ./...
+      - name: Tests with race detector
+        if: runner.os == 'Linux'
+        run: go test -race -count=1 ./...
+      - name: Tests
+        if: runner.os != 'Linux'
+        run: go test -count=1 ./...
+
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: Install ffmpeg (video tests)
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
-      - run: go vet ./...
       - uses: dominikh/staticcheck-action@v1
         with:
           install-go: false
-      - run: go test -race -count=1 ./...
+      - name: govulncheck (known vulnerabilities in Go and dependencies)
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
       - name: Fuzz key paths briefly
         run: go test -run='^$' -fuzz=FuzzKeyPaths -fuzztime=20s ./internal/storage
-      - name: Build every release target
+      - name: Build every release target (static, CGO off)
         run: |
           for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
-            GOOS=${t%/*} GOARCH=${t#*/} CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /tmp/tijori-${t%/*}-${t#*/} ./cmd/tijori
+            out=/tmp/tijori-${t%/*}-${t#*/}
+            GOOS=${t%/*} GOARCH=${t#*/} CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o $out ./cmd/tijori
           done
           ls -lh /tmp/tijori-*
+          file /tmp/tijori-linux-amd64 | grep -q "statically linked"
 
-  compat-node:
+  compat:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,19 +67,28 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Start Tijori
         run: |
           go build -o tijori ./cmd/tijori
           TIJORI_DATA_DIR=$RUNNER_TEMP/data TIJORI_ACCESS_KEY=tj_CITESTKEY000000 TIJORI_SECRET_KEY=ci-secret-ci-secret-ci-secret-ci-secret ./tijori serve &
           for i in $(seq 1 30); do curl -sf localhost:9000/health && break; sleep 1; done
-      - name: Node SDK smoke test
+      - name: Node.js SDK
         working-directory: test/compat/node
         run: npm install --no-audit --no-fund && node smoke.mjs
         env:
           TIJORI_URL: http://localhost:9000
           TIJORI_ACCESS_KEY: tj_CITESTKEY000000
           TIJORI_SECRET_KEY: ci-secret-ci-secret-ci-secret-ci-secret
-      - name: curl --aws-sigv4 smoke test
+      - name: boto3 (also what the AWS CLI uses)
+        run: pip install boto3 && python test/compat/python/smoke.py
+        env:
+          TIJORI_URL: http://localhost:9000
+          TIJORI_ACCESS_KEY: tj_CITESTKEY000000
+          TIJORI_SECRET_KEY: ci-secret-ci-secret-ci-secret-ci-secret
+      - name: curl --aws-sigv4
         run: sh test/compat/curl.sh
         env:
           TIJORI_URL: http://localhost:9000
@@ -71,4 +106,5 @@ jobs:
           for i in $(seq 1 30); do [ "$(docker inspect -f '{{.State.Health.Status}}' tijori-ci)" = healthy ] && break; sleep 2; done
           docker inspect -f '{{.State.Health.Status}}' tijori-ci | grep -q healthy
           curl -sf localhost:9000/health
+          docker exec tijori-ci tijori version
           docker images tijori:test

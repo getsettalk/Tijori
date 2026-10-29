@@ -170,3 +170,29 @@ func TestAdminReadOnlyAndRateLimit(t *testing.T) {
 		t.Fatalf("expected rate limit, got %d", st)
 	}
 }
+
+// Behind a reverse proxy every request comes from the proxy's address. One
+// attacker's failed logins must not lock out everybody else.
+func TestAdminRateLimitBehindProxy(t *testing.T) {
+	e := startServer(t, func(c *config.Config) { c.Admin.Password = "correct-horse" })
+	login := func(xff, pw string) int {
+		body := strings.NewReader(`{"username":"admin","password":"` + pw + `"}`)
+		req, _ := http.NewRequest("POST", e.url+"/_admin/api/login", body)
+		req.Header.Set("X-Forwarded-For", xff)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	for i := 0; i < 5; i++ {
+		login("198.51.100.66", "wrong")
+	}
+	if st := login("198.51.100.66", "correct-horse"); st != 429 {
+		t.Fatalf("attacker IP should be blocked, got %d", st)
+	}
+	if st := login("198.51.100.10", "correct-horse"); st != 200 {
+		t.Fatalf("a different client behind the same proxy was blocked: %d", st)
+	}
+}

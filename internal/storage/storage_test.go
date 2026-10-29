@@ -49,6 +49,40 @@ func TestValidateKey(t *testing.T) {
 	}
 }
 
+func TestWindowsSafeNames(t *testing.T) {
+	for _, bad := range []string{"CON", "con.txt", "nul", "COM1.log", "lpt9", "a:b", "x?", "trailing.", "trailing ", "tab\tname"} {
+		if windowsSafe(bad) {
+			t.Errorf("windowsSafe(%q) = true", bad)
+		}
+	}
+	for _, good := range []string{"console.txt", "com10", "a.b.c", "photo.jpg", "COMMIT", "nullable"} {
+		if !windowsSafe(good) {
+			t.Errorf("windowsSafe(%q) = false", good)
+		}
+	}
+}
+
+func TestListPrefixCannotEscape(t *testing.T) {
+	s := newStore(t)
+	put(t, s, "inside.txt", "x")
+	// A second bucket next to "test" must never show up.
+	if err := s.CreateBucket("other"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.PutObject("other", "secret.txt", strings.NewReader("s"), PutOptions{Size: 1}); err != nil {
+		t.Fatal(err)
+	}
+	for _, prefix := range []string{"../", "../other/", "a/../../other/", "..", "/etc/"} {
+		res, err := s.ListObjects("test", ListOptions{Prefix: prefix, MaxKeys: 100})
+		if err != nil {
+			t.Fatalf("prefix %q: %v", prefix, err)
+		}
+		if len(res.Objects) > 0 || len(res.CommonPrefixes) > 0 {
+			t.Fatalf("prefix %q listed %v %v", prefix, keysOf(res), res.CommonPrefixes)
+		}
+	}
+}
+
 func FuzzKeyPaths(f *testing.F) {
 	for _, k := range []string{"a", "a/b", "../x", "dir/", "a/../../b", "%2e%2e/x", "a\\..\\b"} {
 		f.Add(k)

@@ -150,7 +150,8 @@ function modal(html, { wide = false, onMount } = {}) {
     });
     document.body.appendChild(bd);
     const first = $("input, select, textarea, button.primary", bd);
-    if (first) first.focus();
+    if (first) first.focus({ preventScroll: true });
+    bd.firstElementChild.scrollTop = 0;
     if (onMount) onMount(bd.firstElementChild, done);
   });
 }
@@ -586,7 +587,8 @@ VIEWS.keys = async (main) => {
 
 async function showSecret(k) {
   const o = await api("GET", "/overview").catch(() => ({ endpoint: location.origin, region: "auto" }));
-  const bucket = k.buckets[0] === "*" ? "my-bucket" : k.buckets[0];
+  const firstBucket = (o.buckets && o.buckets[0] && o.buckets[0].name) || "my-bucket";
+  const bucket = k.buckets[0] === "*" ? firstBucket : k.buckets[0];
   const laravel = `FILESYSTEM_DISK=s3
 AWS_ACCESS_KEY_ID=${k.access_key}
 AWS_SECRET_ACCESS_KEY=${k.secret_key}

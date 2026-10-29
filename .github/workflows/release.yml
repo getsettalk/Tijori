@@ -17,6 +17,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Go version used for the release (toolchain line in go.mod)
+        run: go version && go version | grep -q "go1.27"
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
@@ -62,3 +64,10 @@ jobs:
           build-args: |
             VERSION=${{ github.ref_name }}
             COMMIT=${{ github.sha }}
+
+  # Install the published release on Linux, macOS and Windows and use it.
+  smoke:
+    needs: [binaries, docker]
+    uses: ./.github/workflows/release-smoke.yml
+    with:
+      version: ${{ github.ref_name }}

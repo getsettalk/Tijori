@@ -33,6 +33,10 @@ type Config struct {
 	// ErrorFormat is "auto" (XML, or JSON when the client sends
 	// Accept: application/json), "xml" or "json".
 	ErrorFormat string `toml:"error_format"`
+	// CORSOrigins lists web origins whose JavaScript may call the S3 API and
+	// /img route (for example presigned uploads from a browser). Empty turns
+	// CORS off; "*" allows any origin.
+	CORSOrigins []string `toml:"cors_origins"`
 
 	// AccessKey and SecretKey define an optional root key with full access.
 	// Normally set through TIJORI_ACCESS_KEY / TIJORI_SECRET_KEY (Docker).
@@ -237,6 +241,15 @@ func (c *Config) Validate() error {
 		c.ErrorFormat = "auto"
 	default:
 		return fmt.Errorf("error_format must be \"auto\", \"xml\" or \"json\", got %q", c.ErrorFormat)
+	}
+	for _, o := range c.CORSOrigins {
+		if o == "*" {
+			continue
+		}
+		u, err := url.Parse(o)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || (u.Path != "" && u.Path != "/") {
+			return fmt.Errorf("cors_origins: %q must look like https://app.example.com (or \"*\")", o)
+		}
 	}
 	if (c.AccessKey == "") != (c.SecretKey == "") {
 		return errors.New("set both TIJORI_ACCESS_KEY and TIJORI_SECRET_KEY, or neither")

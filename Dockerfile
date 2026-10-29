@@ -3,14 +3,14 @@
 #   docker build -t tijori .                    # small image (distroless, no ffmpeg)
 #   docker build -t tijori:ffmpeg --target ffmpeg .   # Alpine image with ffmpeg for video
 
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
 ARG TARGETOS TARGETARCH
 ARG VERSION=dev COMMIT=none DATE=unknown
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
+RUN VERSION="${VERSION#v}" && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
       -ldflags "-s -w -X github.com/getsettalk/Tijori/internal/version.Version=${VERSION} -X github.com/getsettalk/Tijori/internal/version.Commit=${COMMIT} -X github.com/getsettalk/Tijori/internal/version.Date=${DATE}" \
       -o /out/tijori ./cmd/tijori \
  && mkdir -p /out/data

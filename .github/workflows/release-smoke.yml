@@ -1,0 +1,104 @@
+# Installs a published release the way users do and checks it really works
+# on every supported system. Runs automatically after each release and can
+# be started by hand from the Actions tab.
+name: release-smoke
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag to test, for example v1.0.1"
+        required: true
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  TIJORI_VERSION: ${{ inputs.version }}
+
+jobs:
+  binary:
+    name: binary (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-amd64, os: ubuntu-latest }
+          - { name: linux-arm64, os: ubuntu-24.04-arm }
+          - { name: macos-arm64, os: macos-latest }
+          - { name: macos-amd64, os: macos-15-intel }
+          - { name: windows-amd64, os: windows-latest }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version }}
+      - name: Install with the one-line installer (Linux, macOS)
+        if: runner.os != 'Windows'
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/getsettalk/Tijori/${TIJORI_VERSION}/scripts/install.sh" \
+            | TIJORI_INSTALL_DIR="$HOME/bin" sh
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+      - name: Download the zip and verify its checksum (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          v="${TIJORI_VERSION#v}"
+          base="https://github.com/getsettalk/Tijori/releases/download/${TIJORI_VERSION}"
+          curl -fsSLO "$base/tijori_${v}_windows_amd64.zip"
+          curl -fsSLO "$base/checksums.txt"
+          grep " tijori_${v}_windows_amd64.zip\$" checksums.txt | sha256sum -c -
+          mkdir -p "$HOME/bin" && unzip -o "tijori_${v}_windows_amd64.zip" tijori.exe -d "$HOME/bin"
+          cygpath -w "$HOME/bin" >> "$GITHUB_PATH"
+      - name: Version
+        run: tijori version | tee version.txt && grep -q "${TIJORI_VERSION#v}" version.txt
+      - name: init, serve, upload, download, wrong secret, path traversal
+        run: |
+          mkdir -p work && cd work
+          tijori init --yes --listen 127.0.0.1:9000 | tee init.txt
+          ak=$(awk '/Access key:/ {print $3}' init.txt)
+          sk=$(awk '/Secret key:/ {print $3}' init.txt)
+          (tijori serve > server.log 2>&1 &)
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:9000/health && break; sleep 1; done
+          curl -sf http://127.0.0.1:9000/_admin/ > /dev/null
+          TIJORI_URL=http://127.0.0.1:9000 TIJORI_ACCESS_KEY="$ak" TIJORI_SECRET_KEY="$sk" sh ../test/compat/curl.sh
+          tijori doctor || true
+      - name: Server log
+        if: always()
+        run: cat work/server.log || true
+
+  static-linux:
+    name: static binary (no libc needed)
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          v="${TIJORI_VERSION#v}"
+          curl -fsSL "https://github.com/getsettalk/Tijori/releases/download/${TIJORI_VERSION}/tijori_${v}_linux_amd64.tar.gz" | tar xz tijori
+          file tijori
+          file tijori | grep -q "statically linked"
+          docker run --rm -v "$PWD:/x:ro" alpine:3.22 /x/tijori version
+          docker run --rm -v "$PWD:/x:ro" busybox:latest /x/tijori version
+
+  docker-image:
+    name: docker (${{ matrix.arch }}${{ matrix.variant }})
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+        variant: ["", "-ffmpeg"]
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    steps:
+      - run: |
+          img="ghcr.io/getsettalk/tijori:${TIJORI_VERSION#v}${{ matrix.variant }}"
+          docker run -d --name t1 -p 9000:9000 -e TIJORI_ADMIN_PASSWORD=ci-password-123 "$img"
+          for i in $(seq 1 40); do [ "$(docker inspect -f '{{.State.Health.Status}}' t1)" = healthy ] && break; sleep 2; done
+          docker inspect -f '{{.State.Health.Status}}' t1 | grep -q healthy
+          curl -sf localhost:9000/health
+          docker exec t1 tijori version | grep -q "${TIJORI_VERSION#v}"
+          docker exec t1 id

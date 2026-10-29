@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -132,6 +133,20 @@ func (l *limiter) fail(ip, user string) {
 		l.fails = map[string][]time.Time{}
 	}
 	now := time.Now()
+	// Someone spraying random user names must not grow memory forever.
+	if len(l.fails) > 10000 {
+		for k := range l.fails {
+			l.recent(k, now)
+		}
+		if len(l.fails) > 10000 {
+			// Keep per-IP blocks; drop per-user counters.
+			for k := range l.fails {
+				if strings.HasPrefix(k, "user:") {
+					delete(l.fails, k)
+				}
+			}
+		}
+	}
 	l.fails["ip:"+ip] = append(l.recent("ip:"+ip, now), now)
 	l.fails["user:"+user] = append(l.recent("user:"+user, now), now)
 }

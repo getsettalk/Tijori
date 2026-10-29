@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"log/slog"
 	"mime"
-	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/getsettalk/Tijori/internal/config"
+	"github.com/getsettalk/Tijori/internal/httpx"
 	"github.com/getsettalk/Tijori/internal/imageproc"
 	"github.com/getsettalk/Tijori/internal/quota"
 	"github.com/getsettalk/Tijori/internal/s3api"
@@ -131,13 +131,7 @@ func decodeJSON(r *http.Request, v any) error {
 	return dec.Decode(v)
 }
 
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
-}
+func clientIP(r *http.Request) string { return httpx.ClientIP(r) }
 
 // sameOrigin rejects cross-site requests that carry an Origin header from
 // somewhere else (defence in depth on top of SameSite=Strict and CSRF).

@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -193,7 +194,11 @@ func (t *sshTarget) String() string {
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 func (t *sshTarget) run(cmd string, stdin io.Reader, stdout io.Writer) error {
-	args := []string{"-o", "BatchMode=yes", "-o", "ControlMaster=auto", "-o", "ControlPath=" + t.control, "-o", "ControlPersist=60"}
+	args := []string{"-o", "BatchMode=yes"}
+	if runtime.GOOS != "windows" {
+		// Reuse one connection for all files. Windows OpenSSH cannot.
+		args = append(args, "-o", "ControlMaster=auto", "-o", "ControlPath="+t.control, "-o", "ControlPersist=60")
+	}
 	if t.port != "" {
 		args = append(args, "-p", t.port)
 	}

@@ -21,6 +21,7 @@ import (
 	"github.com/getsettalk/Tijori/internal/auth"
 	"github.com/getsettalk/Tijori/internal/backup"
 	"github.com/getsettalk/Tijori/internal/config"
+	"github.com/getsettalk/Tijori/internal/httpx"
 	"github.com/getsettalk/Tijori/internal/imageproc"
 	"github.com/getsettalk/Tijori/internal/quota"
 	"github.com/getsettalk/Tijori/internal/s3api"
@@ -158,8 +159,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case s.Admin != nil && s.Cfg.Admin.Listen == "" && (p == s.Cfg.Admin.Path || strings.HasPrefix(p, s.Cfg.Admin.Path+"/")):
 		s.Admin.ServeHTTP(w, r)
 	case s.Images != nil && strings.HasPrefix(p, "/img/"):
+		if (httpx.CORS{Origins: s.Cfg.CORSOrigins}).Handle(w, r) {
+			return
+		}
 		s.Images.ServeHTTP(w, r)
 	default:
+		if (httpx.CORS{Origins: s.Cfg.CORSOrigins}).Handle(w, r) {
+			return
+		}
 		s.S3.ServeHTTP(w, r)
 	}
 }
@@ -258,18 +265,10 @@ func (s *Server) withAccessLog(next http.Handler) http.Handler {
 				lvl = slog.LevelDebug
 			}
 			s.Log.Log(r.Context(), lvl, "request", "method", r.Method, "path", r.URL.Path, "status", rec.status,
-				"bytes", rec.bytes, "ms", time.Since(t0).Milliseconds(), "remote", remoteIP(r))
+				"bytes", rec.bytes, "ms", time.Since(t0).Milliseconds(), "remote", httpx.ClientIP(r))
 		}()
 		next.ServeHTTP(rec, r)
 	})
-}
-
-func remoteIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }
 
 // Handler returns the main HTTP handler with logging.

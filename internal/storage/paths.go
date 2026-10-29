@@ -2,6 +2,7 @@ package storage
 
 import (
 	"path/filepath"
+	"runtime"
 	"strings"
 	"unicode/utf8"
 )
@@ -45,8 +46,43 @@ func ValidateKey(key string) error {
 		if len(p) > maxComponent {
 			return ErrKeyTooLong
 		}
+		if windowsPaths && !windowsSafe(p) {
+			return ErrInvalidKey
+		}
 	}
 	return nil
+}
+
+// windowsPaths is true when keys must also be valid Windows file names.
+var windowsPaths = runtime.GOOS == "windows"
+
+var windowsReserved = map[string]bool{"CON": true, "PRN": true, "AUX": true, "NUL": true, "CONIN$": true, "CONOUT$": true}
+
+// windowsSafe rejects names Windows treats specially: device names such as
+// CON or COM1 (even with an extension), characters like ':' (which would
+// address an alternate data stream), control characters, and names ending
+// in a space or dot.
+func windowsSafe(name string) bool {
+	if strings.ContainsAny(name, `<>:"|?*`) || strings.HasSuffix(name, " ") || strings.HasSuffix(name, ".") {
+		return false
+	}
+	for _, r := range name {
+		if r < 32 {
+			return false
+		}
+	}
+	base := strings.ToUpper(name)
+	if i := strings.IndexByte(base, '.'); i >= 0 {
+		base = base[:i]
+	}
+	base = strings.TrimRight(base, " ")
+	if windowsReserved[base] {
+		return false
+	}
+	if len(base) == 4 && (strings.HasPrefix(base, "COM") || strings.HasPrefix(base, "LPT")) && base[3] >= '0' && base[3] <= '9' {
+		return false
+	}
+	return true
 }
 
 // isDirKey reports whether key is a folder marker such as "photos/".
