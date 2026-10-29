@@ -67,8 +67,8 @@ jobs:
       - name: Build image and check its health
         run: |
           docker build -t tijori:test .
-          docker run -d --name t -p 9000:9000 -e TIJORI_ADMIN_PASSWORD=ci-password tijori:test
-          for i in $(seq 1 30); do [ "$(docker inspect -f '{{.State.Health.Status}}' t)" = healthy ] && break; sleep 2; done
-          docker inspect -f '{{.State.Health.Status}}' t | grep -q healthy
+          docker run -d --name tijori-ci -p 9000:9000 -e TIJORI_ADMIN_PASSWORD=ci-password tijori:test
+          for i in $(seq 1 30); do [ "$(docker inspect -f '{{.State.Health.Status}}' tijori-ci)" = healthy ] && break; sleep 2; done
+          docker inspect -f '{{.State.Health.Status}}' tijori-ci | grep -q healthy
           curl -sf localhost:9000/health
           docker images tijori:test
