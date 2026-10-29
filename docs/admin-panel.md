@@ -44,8 +44,7 @@ Shows the destination, schedule and last result, and has a **Run backup now** bu
 
 ## Settings
 
-Switch theme (auto, light, dark) and language (English, हिन्दी), change your
-password, and see the effective configuration (secrets are hidden).
+Switch theme (auto, light, dark), change your password, and see the effective configuration (secrets are hidden).
 
 ## Read-only users
 

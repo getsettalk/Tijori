@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 300" width="1000" height="300" role="img" aria-label="The domain field: https://files.example.com is the address people use; :9000 is Tijori's port inside the container">
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4F46E5"/><stop offset="1" stop-color="#9333EA"/></linearGradient>
+<marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0l10 5-10 5z" fill="#625E78"/></marker></defs><rect width="1000" height="300" rx="22" fill="#F8F7FC"/>
+<g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+<text x="40" y="58" font-size="16" font-weight="700" fill="#625E78">Domains  ·  service "tijori"</text>
+<rect x="40" y="76" width="640" height="64" rx="12" fill="#FFFFFF" stroke="#4F46E5" stroke-width="2.5"/>
+<text x="64" y="117" font-size="25" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"><tspan fill="#1E1B2E">https://files.example.com</tspan><tspan fill="#B45309" font-weight="700">:9000</tspan></text>
+<path d="M90 146 v34 h120" fill="none" stroke="#4F46E5" stroke-width="2.5"/>
+<path d="M435 146 v80 h40" fill="none" stroke="#F59E0B" stroke-width="2.5"/>
+<rect x="215" y="160" width="430" height="44" rx="10" fill="#EDEBFD"/>
+<text x="232" y="188" font-size="16" fill="#1E1B2E"><tspan font-weight="700">Your domain.</tspan> Apps and people use only this.</text>
+<rect x="480" y="206" width="480" height="64" rx="10" fill="#FEF3C7"/>
+<text x="497" y="232" font-size="16" fill="#1E1B2E"><tspan font-weight="700">Tijori's port inside the container.</tspan></text>
+<text x="497" y="256" font-size="15" fill="#625E78">Only Coolify's proxy uses it. Nobody types it.</text>
+<rect x="720" y="76" width="240" height="64" rx="12" fill="#1E1B2E"/>
+<text x="840" y="104" text-anchor="middle" font-size="14" fill="#A19DB8">Apps connect to</text>
+<text x="840" y="127" text-anchor="middle" font-size="15" fill="#FCD34D" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">files.example.com</text>
+</g></svg>

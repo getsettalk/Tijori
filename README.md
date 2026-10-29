@@ -20,13 +20,12 @@
   <a href="#-quick-start">Quick Start</a> ·
   <a href="#-connect-your-app">Connect your app</a> ·
   <a href="#-admin-panel">Admin panel</a> ·
-  <a href="https://getsettalk.github.io/Tijori/">Documentation</a> ·
-  <a href="docs/hi/quick-start.md">हिन्दी</a>
+  <a href="https://getsettalk.github.io/Tijori/">Documentation</a>
 </p>
 
 ---
 
-*Tijori* (तिजोरी) means "safe" or "vault". It keeps your app's files (photos, videos,
+*Tijori* means "safe" or "vault". It keeps your app's files (photos, videos,
 PDFs, backups) on **your own server**, and any S3 library can talk to it, because
 it speaks the same API as Amazon S3.
 
@@ -36,7 +35,7 @@ it speaks the same API as Amazon S3.
   <tr>
     <td width="33%" valign="top"><img src="docs/images/readme/icon-binary.svg" width="44" alt=""><br><b>One small binary</b><br>About 9 MB. No database, no runtime. Linux, macOS, Windows, amd64 and arm64.</td>
     <td width="33%" valign="top"><img src="docs/images/readme/icon-s3.svg" width="44" alt=""><br><b>S3 compatible</b><br>Buckets, multipart uploads, ranges, copy, presigned URLs and AWS Signature V4.</td>
-    <td width="33%" valign="top"><img src="docs/images/readme/icon-admin.svg" width="44" alt=""><br><b>Admin panel</b><br>File browser with previews, drag-and-drop upload, keys, share links. Mobile, dark mode, हिन्दी.</td>
+    <td width="33%" valign="top"><img src="docs/images/readme/icon-admin.svg" width="44" alt=""><br><b>Admin panel</b><br>File browser with previews, drag-and-drop upload, keys, share links. Works on phones, dark mode.</td>
   </tr>
   <tr>
     <td valign="top"><img src="docs/images/readme/icon-image.svg" width="44" alt=""><br><b>Image resizing</b><br><code>/img/photos/cat.jpg?w=300</code> gives a thumbnail, cached on disk.</td>
@@ -357,7 +356,7 @@ those, look at [Garage](https://garagehq.deuxfleurs.fr/) or [SeaweedFS](https://
 | [Quick Start](docs/quick-start.md) | [Node.js](docs/nodejs.md) | [Video](docs/video.md) | [CLI](docs/cli.md) |
 | [VPS install](docs/install-vps.md) | [Mobile apps](docs/mobile.md) | [Admin panel](docs/admin-panel.md) | [Troubleshooting](docs/troubleshooting.md) |
 | [Docker](docs/docker.md) · [Coolify](docs/coolify.md) | | [Quotas](docs/quotas.md) | [Security](docs/security.md) |
-| [HTTPS](docs/https.md) | | [Backups](docs/backup.md) | [हिन्दी Quick Start](docs/hi/quick-start.md) |
+| [HTTPS](docs/https.md) | | [Backups](docs/backup.md) | |
 
 ## 🤝 Contributing
 

@@ -1,14 +1,26 @@
-# Tijori for Coolify (v4). In Coolify: New Resource -> Docker Compose ->
-# paste this file -> set the domain for "tijori" -> Deploy.
-# Coolify's proxy provides HTTPS. SERVICE_* variables are filled in by Coolify.
+# documentation: https://getsettalk.github.io/Tijori/coolify/
+# slogan: Tiny self-hosted S3-compatible storage with an admin panel.
+# category: storage
+# tags: s3, object, storage, files, images, backup
+# port: 9000
+#
+# Tijori for Coolify (written for v4.4). In Coolify:
+#   + New -> Docker Compose Empty -> paste this file -> Save
+#   -> check the domain of "tijori" -> Deploy.
+# Coolify's proxy provides HTTPS. Do not add a `ports:` section.
 services:
   tijori:
     image: ghcr.io/getsettalk/tijori:latest
+    # For video thumbnails use: ghcr.io/getsettalk/tijori:latest-ffmpeg
     restart: unless-stopped
     environment:
-      - SERVICE_FQDN_TIJORI_9000
-      - TIJORI_PUBLIC_URL=${SERVICE_FQDN_TIJORI}
+      # Coolify gives this service a domain and routes it to port 9000.
+      - SERVICE_URL_TIJORI_9000
+      # Full address with https://, used for share links in the admin panel.
+      - TIJORI_PUBLIC_URL=${SERVICE_URL_TIJORI}
+      # Admin panel login is "admin"; Coolify generates this password.
       - TIJORI_ADMIN_PASSWORD=${SERVICE_PASSWORD_ADMIN}
+      # Optional: a ready-made key for your app. Set both, or leave both empty.
       - TIJORI_ACCESS_KEY=${TIJORI_ACCESS_KEY:-}
       - TIJORI_SECRET_KEY=${TIJORI_SECRET_KEY:-}
     volumes:

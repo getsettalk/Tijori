@@ -29,41 +29,17 @@ const STRINGS = {
     accessKey: "Access key", secretKey: "Secret key", runBackup: "Run backup now", running: "Running…",
     notConfigured: "No backup destination is set.", destination: "Destination", schedule: "Schedule",
     changePassword: "Change password", currentPassword: "Current password", newPassword: "New password",
-    theme: "Theme", language: "Language", auto: "Auto", light: "Light", dark: "Dark", config: "Effective configuration",
+    theme: "Theme", auto: "Auto", light: "Light", dark: "Dark", config: "Effective configuration",
     readonly: "read-only", available: "available", notFound: "not installed", ok: "OK", failed: "failed",
     perm_readwrite: "Read and write", perm_read: "Read only", perm_write: "Write only",
-  },
-  hi: {
-    dashboard: "डैशबोर्ड", buckets: "बकेट", files: "फ़ाइलें", keys: "कुंजियाँ", backup: "बैकअप", settings: "सेटिंग्स",
-    login: "लॉग इन", logout: "लॉग आउट", username: "यूज़र नाम", password: "पासवर्ड",
-    totalUsed: "इस्तेमाल हुई जगह", objects: "फ़ाइलें", bucketsCount: "बकेट", keysCount: "एक्सेस कुंजियाँ",
-    usageByBucket: "बकेट के अनुसार उपयोग", server: "सर्वर", version: "संस्करण", uptime: "चालू समय", endpoint: "S3 पता",
-    video: "वीडियो प्रोसेसिंग", imageCache: "इमेज कैश", lastBackup: "पिछला बैकअप", never: "कभी नहीं", freeDisk: "खाली डिस्क",
-    newBucket: "नया बकेट", name: "नाम", public: "सार्वजनिक", quota: "सीमा", maxFile: "अधिकतम फ़ाइल आकार", created: "बनाया गया",
-    browse: "खोलें", edit: "बदलें", delete: "मिटाएँ", save: "सहेजें", cancel: "रद्द करें", create: "बनाएँ", close: "बंद करें",
-    publicHint: "लिंक वाला कोई भी फ़ाइल डाउनलोड कर सकता है। अपलोड के लिए हमेशा कुंजी चाहिए।",
-    videoHint: "हर वीडियो का थंबनेल और 720p कॉपी बनाएँ (ffmpeg ज़रूरी)।",
-    managed: "सेटिंग्स tijori.toml से आती हैं", noBuckets: "अभी कोई बकेट नहीं है। फ़ाइलें रखने के लिए एक बनाएँ।",
-    upload: "अपलोड", newFolder: "नया फ़ोल्डर", search: "इस फ़ोल्डर में खोजें", dropHere: "अपलोड के लिए फ़ाइलें यहाँ छोड़ें, या",
-    chooseFiles: "फ़ाइलें चुनें", emptyFolder: "यह फ़ोल्डर खाली है।", download: "डाउनलोड", copyUrl: "सार्वजनिक लिंक कॉपी करें",
-    shareLink: "शेयर लिंक", expiresIn: "लिंक कितने समय चलेगा", copy: "कॉपी", copied: "कॉपी हो गया", generate: "लिंक बनाएँ",
-    confirmDelete: "{name} मिटाएँ? यह वापस नहीं होगा।", confirmFolder: "फ़ोल्डर {name} और उसकी सारी फ़ाइलें मिटाएँ?",
-    newKey: "नई कुंजी", permission: "अनुमति", allBuckets: "सभी बकेट", revoke: "रद्द करें",
-    confirmRevoke: "{name} रद्द करें? इसका उपयोग करने वाले ऐप बंद हो जाएँगे।", secretOnce: "सीक्रेट अभी कॉपी करें। यह सिर्फ़ एक बार दिखेगा।",
-    accessKey: "एक्सेस कुंजी", secretKey: "सीक्रेट कुंजी", runBackup: "अभी बैकअप लें", running: "चल रहा है…",
-    notConfigured: "बैकअप की जगह सेट नहीं है।", destination: "जगह", schedule: "समय-सारणी",
-    changePassword: "पासवर्ड बदलें", currentPassword: "मौजूदा पासवर्ड", newPassword: "नया पासवर्ड",
-    theme: "थीम", language: "भाषा", auto: "अपने-आप", light: "हल्का", dark: "गहरा", config: "लागू कॉन्फ़िगरेशन",
-    readonly: "केवल पढ़ने के लिए", available: "उपलब्ध", notFound: "इंस्टॉल नहीं", ok: "ठीक", failed: "असफल",
-    perm_readwrite: "पढ़ना और लिखना", perm_read: "केवल पढ़ना", perm_write: "केवल लिखना",
   },
 };
 
 function store(key, value) {
   try { if (value === undefined) return localStorage.getItem(key); localStorage.setItem(key, value); } catch (e) { return null; }
 }
-let lang = store("tijori.lang") || (navigator.language || "en").slice(0, 2);
-if (!STRINGS[lang]) lang = "en";
+// UI strings live in STRINGS so more languages can be added later.
+const lang = "en";
 function t(key, vars) {
   let s = (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.en[key] || key;
   for (const k in vars || {}) s = s.replace("{" + k + "}", vars[k]);
@@ -671,11 +647,9 @@ VIEWS.settings = async (main) => {
   const s = await api("GET", "/settings");
   const theme = store("tijori.theme") || "auto";
   main.innerHTML = `<h1>${t("settings")}</h1><div class="grid two">
-    <div class="card"><h2>${t("theme")} &amp; ${t("language")}</h2>
+    <div class="card"><h2>${t("theme")}</h2>
       <div class="row"><div class="field"><label>${t("theme")}</label><select id="theme">
-        ${["auto", "light", "dark"].map((v) => `<option value="${v}" ${v === theme ? "selected" : ""}>${t(v)}</option>`).join("")}</select></div>
-      <div class="field"><label>${t("language")}</label><select id="lang">
-        <option value="en" ${lang === "en" ? "selected" : ""}>English</option><option value="hi" ${lang === "hi" ? "selected" : ""}>हिन्दी</option></select></div></div>
+        ${["auto", "light", "dark"].map((v) => `<option value="${v}" ${v === theme ? "selected" : ""}>${t(v)}</option>`).join("")}</select></div></div>
       <h2>${t("changePassword")}</h2><form id="pw" novalidate><div class="error-box hidden"></div>
         <div class="field"><label>${t("currentPassword")}</label><input type="password" name="cur" autocomplete="current-password"></div>
         <div class="field"><label>${t("newPassword")}</label><input type="password" name="new" autocomplete="new-password" minlength="8"></div>
@@ -684,7 +658,6 @@ VIEWS.settings = async (main) => {
       ${(s.warnings || []).map((w) => `<div class="error-box">${esc(w)}</div>`).join("")}
       <pre class="code">${esc(s.toml)}</pre></div></div>`;
   $("#theme", main).addEventListener("change", (e) => { store("tijori.theme", e.target.value); applyTheme(); });
-  $("#lang", main).addEventListener("change", (e) => { store("tijori.lang", e.target.value); location.reload(); });
   $("#pw", main).addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = e.target, err = $(".error-box", f);

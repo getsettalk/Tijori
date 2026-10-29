@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 330" width="1200" height="330" role="img" aria-label="Apps and browsers reach https://files.example.com; the Coolify proxy adds HTTPS and forwards to the Tijori container on port 9000, which stores files in the tijori-data volume">
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4F46E5"/><stop offset="1" stop-color="#9333EA"/></linearGradient>
+<marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0l10 5-10 5z" fill="#625E78"/></marker></defs>
+<rect width="1200" height="330" rx="22" fill="#F8F7FC"/>
+<g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+<rect x="30" y="60" width="230" height="210" rx="18" fill="#FFFFFF" stroke="#E4E1F0" stroke-width="2"/>
+<text x="145" y="98" text-anchor="middle" font-size="20" font-weight="700" fill="#1E1B2E">Your apps &amp; users</text>
+<text x="145" y="136" text-anchor="middle" font-size="16" fill="#625E78">Laravel · Node.js</text>
+<text x="145" y="162" text-anchor="middle" font-size="16" fill="#625E78">mobile apps · browser</text>
+<rect x="52" y="194" width="186" height="48" rx="10" fill="#1E1B2E"/>
+<text x="145" y="224" text-anchor="middle" font-size="15" fill="#FCD34D" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">files.example.com</text>
+<path d="M262 165h88" stroke="#625E78" stroke-width="3" marker-end="url(#ar)"/>
+<text x="306" y="150" text-anchor="middle" font-size="15" font-weight="700" fill="#4338CA">HTTPS</text>
+<rect x="356" y="24" width="660" height="282" rx="20" fill="#FFFFFF" stroke="#C7C2F5" stroke-width="2" stroke-dasharray="7 6"/>
+<text x="378" y="54" font-size="17" font-weight="700" fill="#4338CA">Coolify server</text>
+<rect x="380" y="80" width="200" height="170" rx="16" fill="#EDEBFD"/>
+<text x="480" y="122" text-anchor="middle" font-size="19" font-weight="700" fill="#1E1B2E">Proxy</text>
+<text x="480" y="152" text-anchor="middle" font-size="15" fill="#625E78">free HTTPS</text>
+<text x="480" y="176" text-anchor="middle" font-size="15" fill="#625E78">certificate</text>
+<text x="480" y="214" text-anchor="middle" font-size="14" fill="#625E78">(managed by Coolify)</text>
+<path d="M582 165h70" stroke="#625E78" stroke-width="3" marker-end="url(#ar)"/>
+<text x="617" y="150" text-anchor="middle" font-size="14" font-weight="700" fill="#4338CA">:9000</text>
+<rect x="660" y="80" width="330" height="170" rx="16" fill="url(#g)"/>
+<g transform="translate(680 98) scale(0.95)"><g fill="#FFFFFF"><ellipse cx="26" cy="16" rx="12" ry="4.5"/><path d="M14 19A12 4.5 0 0 0 38 19V26A12 4.5 0 0 1 14 26Z"/><path d="M14 29A12 4.5 0 0 0 38 29V36A12 4.5 0 0 1 14 36Z"/><path d="M14 39A12 4.5 0 0 0 38 39V46A12 4.5 0 0 1 14 46Z"/></g><g fill="none" stroke="#FCD34D" stroke-width="2.8" stroke-linecap="round"><path d="M42.79 13.87A7.4 7.4 0 0 1 55.91 13.3"/><path d="M56.21 20.13A7.4 7.4 0 0 1 43.09 20.7"/></g><g fill="#FCD34D" stroke="#FCD34D" stroke-linejoin="round"><path d="M57.21 15.56L57.39 10.94L53.12 13.4Z"/><path d="M41.79 18.44L41.61 23.06L45.88 20.6Z"/></g><rect x="31.5" y="31.5" width="27.5" height="24" rx="7.5" fill="#7A3BE6"/><rect x="34.5" y="34.5" width="21.5" height="18" rx="4.5" fill="#FFFFFF"/><path d="M37 50L43.2 42L46.6 46.2L49.2 43.4L53.6 50Z" fill="#6D28D9"/><circle cx="49.4" cy="38.8" r="2.4" fill="#F59E0B"/></g>
+<text x="760" y="128" font-size="22" font-weight="800" fill="#FFFFFF">tijori</text>
+<text x="760" y="154" font-size="15" fill="#FFFFFF" fill-opacity="0.9">container, port 9000</text>
+<text x="684" y="200" font-size="15" fill="#FFFFFF">S3 API  /bucket/key</text>
+<text x="684" y="226" font-size="15" fill="#FFFFFF">Admin panel  /_admin/</text>
+<path d="M825 252v26" stroke="#625E78" stroke-width="3"/>
+<path d="M825 278h185" stroke="#625E78" stroke-width="3" marker-end="url(#ar)"/>
+<rect x="1030" y="236" width="150" height="70" rx="14" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+<text x="1105" y="266" text-anchor="middle" font-size="16" font-weight="700" fill="#1E1B2E">Volume</text>
+<text x="1105" y="290" text-anchor="middle" font-size="14" fill="#B45309" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">tijori-data</text>
+</g></svg>
