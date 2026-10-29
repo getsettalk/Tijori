@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -194,5 +195,68 @@ func TestAdminRateLimitBehindProxy(t *testing.T) {
 	}
 	if st := login("198.51.100.10", "correct-horse"); st != 200 {
 		t.Fatalf("a different client behind the same proxy was blocked: %d", st)
+	}
+}
+
+// Big files are uploaded from the admin panel in small parts so that each
+// request stays short behind proxies that cut long requests.
+func TestAdminChunkedUpload(t *testing.T) {
+	e := startServer(t, func(c *config.Config) {
+		c.Admin.Password = "correct-horse"
+		c.Buckets["media"] = config.BucketConfig{MaxSize: 1 << 20}
+	})
+	a := newAdminClient(t, e)
+	if st := a.login("admin", "correct-horse"); st != 200 {
+		t.Fatalf("login %d", st)
+	}
+	data := bytes.Repeat([]byte("0123456789"), 25_000) // 250 KB
+	st, out := a.do("POST", "/uploads", map[string]any{"bucket": "media", "key": "clips/a.mp4", "size": len(data), "type": "video/mp4"}, true)
+	if st != 201 {
+		t.Fatalf("start: %d %v", st, out)
+	}
+	id := out["id"].(string)
+	var parts []map[string]any
+	for i, chunk := range [][]byte{data[:100_000], data[100_000:200_000], data[200_000:]} {
+		st, out := a.do("PUT", fmt.Sprintf("/uploads/part?bucket=media&key=clips/a.mp4&id=%s&n=%d", id, i+1), chunk, true)
+		if st != 200 {
+			t.Fatalf("part %d: %d %v", i+1, st, out)
+		}
+		parts = append(parts, map[string]any{"n": i + 1, "etag": out["etag"]})
+	}
+	st, out = a.do("POST", "/uploads/complete", map[string]any{"bucket": "media", "key": "clips/a.mp4", "id": id, "parts": parts}, true)
+	if st != 200 || out["type"] != "video/mp4" || int(out["size"].(float64)) != len(data) {
+		t.Fatalf("complete: %d %v", st, out)
+	}
+	f, _, err := e.srv.Store.GetObject("media", "clips/a.mp4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(f)
+	f.Close()
+	if !bytes.Equal(got, data) {
+		t.Fatal("assembled file differs")
+	}
+	if u := e.srv.Quota.BucketUsage("media"); u.Objects != 1 || u.Bytes != int64(len(data)) {
+		t.Fatalf("usage %+v", u)
+	}
+
+	// Over quota: refused before any data is sent.
+	st, out = a.do("POST", "/uploads", map[string]any{"bucket": "media", "key": "big.bin", "size": 2 << 20}, true)
+	if st != 403 || !strings.Contains(fmt.Sprint(out["error"]), "full") {
+		t.Fatalf("quota check at start: %d %v", st, out)
+	}
+
+	// Abort removes the upload.
+	_, out = a.do("POST", "/uploads", map[string]any{"bucket": "media", "key": "x.bin", "size": 10}, true)
+	id = out["id"].(string)
+	if st, _ := a.do("DELETE", "/uploads?bucket=media&key=x.bin&id="+id, nil, true); st != 200 {
+		t.Fatalf("abort %d", st)
+	}
+	if st, _ := a.do("PUT", "/uploads/part?bucket=media&key=x.bin&n=1&id="+id, []byte("x"), true); st != 404 {
+		t.Fatalf("part after abort: %d", st)
+	}
+	// Without the CSRF token nothing happens.
+	if st, _ := a.do("POST", "/uploads", map[string]any{"bucket": "media", "key": "y", "size": 1}, false); st != 403 {
+		t.Fatalf("missing CSRF: %d", st)
 	}
 }

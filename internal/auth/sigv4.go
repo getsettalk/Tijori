@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -165,6 +166,9 @@ func (v *Verifier) verifyHeader(r *http.Request, authz string) (*Result, error) 
 	if err != nil {
 		return nil, err
 	}
+	if h := unsignedAmzHeader(r, p.signedHeaders); h != "" {
+		return nil, s3err.AccessDenied.WithMessage("There were headers present in the request which were not signed: " + h)
+	}
 	payload := r.Header.Get("X-Amz-Content-Sha256")
 	if payload == "" {
 		if r.ContentLength > 0 || len(r.TransferEncoding) > 0 {
@@ -243,6 +247,9 @@ func (v *Verifier) verifyPresigned(r *http.Request, q url.Values) (*Result, erro
 	if err != nil {
 		return nil, err
 	}
+	if h := unsignedAmzHeader(r, p.signedHeaders); h != "" {
+		return nil, s3err.AccessDenied.WithMessage("There were headers present in the request which were not signed: " + h)
+	}
 	payload := q.Get("X-Amz-Content-Sha256")
 	if payload == "" {
 		payload = unsignedPayload
@@ -253,6 +260,37 @@ func (v *Verifier) verifyPresigned(r *http.Request, q url.Values) (*Result, erro
 		return nil, s3err.SignatureDoesNotMatch
 	}
 	return &Result{Key: &key, Body: r.Body, Size: r.ContentLength, Presigned: true}, nil
+}
+
+// unsignedOK lists x-amz-* headers SDKs send without signing that cannot
+// change what a request does.
+var unsignedOK = map[string]bool{
+	"x-amz-user-agent":             true,
+	"x-amz-content-sha256":         true,
+	"x-amz-sdk-checksum-algorithm": true,
+	"x-amz-checksum-crc32":         true,
+	"x-amz-checksum-crc32c":        true,
+	"x-amz-checksum-crc64nvme":     true,
+	"x-amz-checksum-sha1":          true,
+	"x-amz-checksum-sha256":        true,
+	"x-amz-checksum-type":          true,
+}
+
+// unsignedAmzHeader returns the first x-amz-* header that is present but not
+// covered by the signature. Like S3 (HeadersNotSigned), such requests are
+// refused: otherwise anyone holding a presigned upload URL could add, for
+// example, X-Amz-Copy-Source and turn it into a copy of another object.
+func unsignedAmzHeader(r *http.Request, signed []string) string {
+	for name := range r.Header {
+		l := strings.ToLower(name)
+		if !strings.HasPrefix(l, "x-amz-") || unsignedOK[l] {
+			continue
+		}
+		if !slices.Contains(signed, l) {
+			return l
+		}
+	}
+	return ""
 }
 
 // ---- canonicalisation ------------------------------------------------------

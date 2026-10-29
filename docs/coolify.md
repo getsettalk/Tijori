@@ -214,10 +214,33 @@ See [Backup, restore and moving servers](backup.md).
 - Give every app its own key, limited to its bucket. Revoke test keys.
 - If someone else could see your screen or logs, rotate the admin password and keys.
 
+## Long uploads and the 60-second proxy limit
+
+Coolify's proxy (Traefik v3) cuts every request after **60 seconds** by default and answers
+`499 Client Closed Request`. A 40 MB upload on a slow connection takes longer than that.
+
+- **Admin panel (1.0.1+):** big files are sent in parts of about 15 seconds each, with retries,
+  so uploads of any size work. Nothing to do.
+- **Apps:** S3 SDKs switch to multipart uploads for big files (`Upload` in `@aws-sdk/lib-storage`,
+  `upload_file` in boto3), which keeps each request short.
+- **Raise the limit** if your apps send big files in one request: in Coolify open
+  **Servers → your server → Proxy**, add these two lines to the proxy's `command:` list, save, and
+  click **Restart Proxy** (all apps on that server reconnect, so pick a quiet moment):
+
+    ```yaml
+    - '--entrypoints.http.transport.respondingTimeouts.readTimeout=600s'
+    - '--entrypoints.https.transport.respondingTimeouts.readTimeout=600s'
+    ```
+
+    `600s` allows 10-minute requests. `0` removes the limit, which also removes a protection
+    against slow-request attacks, so prefer a number.
+
 ## Troubleshooting
 
 | Problem | Fix |
 | --- | --- |
+| Upload fails with **499** after about a minute | Coolify's proxy (Traefik) stops any request after **60 seconds**. Since 1.0.1 the admin panel uploads big files in small parts, so this no longer happens there; SDKs use multipart for big files. For apps that send large files in one request over slow links, raise the proxy limit (below). |
+| The domain shows `AccessDenied` XML | That is the S3 API, which needs a key. Open `/_admin/` for the admin panel (1.0.1 redirects there for you). |
 | "No Available Server" or 502 | The service is not healthy yet, or the domain's port is not `9000`. Check **Runtime Logs**. |
 | `ERR_BLOCKED_BY_CLIENT` in the browser | An ad blocker blocks `sslip.io`. Allow it, or use your own domain. |
 | Login says the password is wrong | User `admin`, password from **General → Admin · Password**. |

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -80,5 +81,49 @@ func TestVideoProcessing(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	if jobs, _ := e.srv.Video.Jobs(); len(jobs) != 1 {
 		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+}
+
+// A playlist uploaded to a video bucket must not make ffmpeg read files from
+// other buckets.
+func TestVideoPlaylistCannotReadOtherFiles(t *testing.T) {
+	ff, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg not installed")
+	}
+	e := startServer(t, func(c *config.Config) {
+		c.Buckets["vids"] = config.BucketConfig{VideoProcess: true}
+		c.Buckets["private"] = config.BucketConfig{}
+	})
+	secret := filepath.Join(t.TempDir(), "secret.ts")
+	if out, err := exec.Command(ff, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=duration=1:size=160x120:rate=5",
+		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-f", "mpegts", secret).CombinedOutput(); err != nil {
+		t.Skipf("cannot make clip: %s", out)
+	}
+	data, _ := os.ReadFile(secret)
+	if _, err := e.s3.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("private"), Key: aws.String("x.ts"), Body: bytes.NewReader(data)}); err != nil {
+		t.Fatal(err)
+	}
+	target, _ := e.srv.Store.DataPath("private", "x.ts")
+	playlist := "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:1.0,\nfile://" + target + "\n#EXT-X-ENDLIST\n"
+	if _, err := e.s3.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("vids"), Key: aws.String("steal.m3u8"),
+		Body: strings.NewReader(playlist), ContentType: aws.String("video/mp4")}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		jobs, _ := e.srv.Video.Jobs()
+		if len(jobs) == 1 && (jobs[0].Status == video.Failed || jobs[0].Status == video.Done) {
+			if jobs[0].Status != video.Failed {
+				t.Fatalf("playlist was processed: %+v", jobs[0])
+			}
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	for _, k := range []string{"steal.jpg", "steal_720p.mp4"} {
+		if _, err := e.s3.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String("vids"), Key: aws.String(k)}); err == nil {
+			t.Fatalf("%s was created from another bucket's file", k)
+		}
 	}
 }

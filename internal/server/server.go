@@ -90,6 +90,7 @@ func New(cfg *config.Config, log *slog.Logger) (*Server, error) {
 		return nil, err
 	}
 	db.SetEnvKey(cfg.AccessKey, cfg.SecretKey)
+	httpx.TrustForwarded = cfg.TrustProxyHeaders
 	if cfg.Admin.Password != "" {
 		if err := EnsureAdminPassword(db, "admin", cfg.Admin.Password); err != nil {
 			return nil, err
@@ -156,6 +157,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.health(w, r)
 	case p == "/metrics" && s.Cfg.Metrics:
 		s.metrics(w, r)
+	case p == "/" && isBrowserVisit(r):
+		s.landing(w, r)
 	case s.Admin != nil && s.Cfg.Admin.Listen == "" && (p == s.Cfg.Admin.Path || strings.HasPrefix(p, s.Cfg.Admin.Path+"/")):
 		s.Admin.ServeHTTP(w, r)
 	case s.Images != nil && strings.HasPrefix(p, "/img/"):
@@ -169,6 +172,40 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.S3.ServeHTTP(w, r)
 	}
+}
+
+// isBrowserVisit reports whether someone opened the server's address in a
+// web browser, as opposed to an S3 client calling ListBuckets: no
+// credentials and an Accept header asking for HTML.
+func isBrowserVisit(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	if r.Header.Get("Authorization") != "" || r.URL.RawQuery != "" {
+		return false
+	}
+	return strings.Contains(r.Header.Get("Accept"), "text/html")
+}
+
+// landing sends people who open the bare address to the admin panel, or
+// explains what the address is when the panel is not served here.
+func (s *Server) landing(w http.ResponseWriter, r *http.Request) {
+	if s.Admin != nil && s.Cfg.Admin.Listen == "" {
+		http.Redirect(w, r, s.Cfg.Admin.Path+"/", http.StatusFound)
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", "text/html; charset=utf-8")
+	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Cache-Control", "no-store")
+	_, _ = io.WriteString(w, `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tijori</title></head>
+<body style="font-family:system-ui,sans-serif;max-width:560px;margin:15vh auto;padding:0 20px;color:#1e1b2e;background:#f8f7fc;line-height:1.5">
+<h1 style="color:#4f46e5;margin:0 0 8px">Tijori is running</h1>
+<p>This address is an S3-compatible API for apps. Use it as the <b>endpoint</b> in your S3 library, with an access key.</p>
+<p>Files in public buckets open directly, for example <code>/bucket/path/file.jpg</code>.</p>
+<p style="color:#625e78;font-size:14px">Health check: <a href="/health">/health</a></p>
+</body></html>`)
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {

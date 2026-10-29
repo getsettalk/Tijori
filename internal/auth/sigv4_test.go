@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -153,5 +154,30 @@ func TestNewKeyFormat(t *testing.T) {
 	}
 	if _, err := NewKey("x", nil, "admin"); err == nil {
 		t.Fatal("expected error for bad permission")
+	}
+}
+
+func TestChunkedTrailerLimit(t *testing.T) {
+	var body bytes.Buffer
+	body.WriteString("3\r\nabc\r\n0\r\n")
+	for i := 0; i < 50; i++ {
+		fmt.Fprintf(&body, "x-amz-junk-%d:%s\r\n", i, strings.Repeat("a", 500))
+	}
+	body.WriteString("\r\n")
+	c := newChunkedReader(io.NopCloser(&body), chunkConfig{trailer: true})
+	if _, err := io.ReadAll(c); err == nil {
+		t.Fatal("unbounded trailers accepted")
+	}
+}
+
+func TestUnsignedAmzHeadersRejected(t *testing.T) {
+	r := httptest.NewRequest("PUT", "http://h/b/k", nil)
+	r.Header.Set("X-Amz-Copy-Source", "/other/secret")
+	r.Header.Set("X-Amz-User-Agent", "aws-sdk-js/3")
+	if got := unsignedAmzHeader(r, []string{"host", "x-amz-date"}); got != "x-amz-copy-source" {
+		t.Fatalf("got %q", got)
+	}
+	if got := unsignedAmzHeader(r, []string{"host", "x-amz-copy-source"}); got != "" {
+		t.Fatalf("signed header flagged: %q", got)
 	}
 }

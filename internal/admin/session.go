@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -105,7 +106,18 @@ func (l *limiter) recent(key string, now time.Time) []time.Time {
 	return keep
 }
 
-// blocked reports whether ip or user must wait, and for how long.
+// limitKey groups IPv6 clients by /64, since one host usually controls a
+// whole /64 and could otherwise rotate addresses to dodge the limit.
+func limitKey(ip string) string {
+	p := net.ParseIP(ip)
+	if p == nil || p.To4() != nil {
+		return "ip:" + ip
+	}
+	return "ip:" + p.Mask(net.CIDRMask(64, 128)).String() + "/64"
+}
+
+// blocked reports whether ip or user must wait, and for how long. user is
+// empty for names that do not exist, so their counters are never kept.
 func (l *limiter) blocked(ip, user string) (bool, time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -120,8 +132,11 @@ func (l *limiter) blocked(ip, user string) (bool, time.Duration) {
 		}
 		return false, 0
 	}
-	if b, d := check("ip:"+ip, maxFailures); b {
+	if b, d := check(limitKey(ip), maxFailures); b {
 		return b, d
+	}
+	if user == "" {
+		return false, 0
 	}
 	return check("user:"+user, maxUserFailure)
 }
@@ -133,27 +148,41 @@ func (l *limiter) fail(ip, user string) {
 		l.fails = map[string][]time.Time{}
 	}
 	now := time.Now()
-	// Someone spraying random user names must not grow memory forever.
 	if len(l.fails) > 10000 {
 		for k := range l.fails {
 			l.recent(k, now)
 		}
-		if len(l.fails) > 10000 {
-			// Keep per-IP blocks; drop per-user counters.
-			for k := range l.fails {
-				if strings.HasPrefix(k, "user:") {
-					delete(l.fails, k)
+		// Still full: forget the IPs that failed longest ago. Per-user
+		// counters stay (they only exist for real users).
+		for len(l.fails) > 8000 {
+			oldest, when := "", now
+			for k, v := range l.fails {
+				if strings.HasPrefix(k, "ip:") && len(v) > 0 && v[len(v)-1].Before(when) {
+					oldest, when = k, v[len(v)-1]
 				}
 			}
+			if oldest == "" {
+				break
+			}
+			delete(l.fails, oldest)
 		}
 	}
-	l.fails["ip:"+ip] = append(l.recent("ip:"+ip, now), now)
-	l.fails["user:"+user] = append(l.recent("user:"+user, now), now)
+	add := func(k string) {
+		v := append(l.recent(k, now), now)
+		if len(v) > 20 {
+			v = v[len(v)-20:]
+		}
+		l.fails[k] = v
+	}
+	add(limitKey(ip))
+	if user != "" {
+		add("user:" + user)
+	}
 }
 
 func (l *limiter) reset(ip string) {
 	l.mu.Lock()
-	delete(l.fails, "ip:"+ip)
+	delete(l.fails, limitKey(ip))
 	l.mu.Unlock()
 }
 

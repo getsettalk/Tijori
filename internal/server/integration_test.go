@@ -448,3 +448,96 @@ func TestBrowserPresignedUploadCORS(t *testing.T) {
 	}
 	resp.Body.Close()
 }
+
+// Opening the bare address in a browser leads to the admin panel instead of
+// an S3 AccessDenied XML; S3 clients are unaffected.
+func TestBrowserVisitToRoot(t *testing.T) {
+	e := startServer(t, nil)
+	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	req, _ := http.NewRequest("GET", e.url+"/", nil)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	resp, err := noFollow.Do(req)
+	if err != nil || resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/_admin/" {
+		t.Fatalf("browser visit: %v %d %q", err, resp.StatusCode, resp.Header.Get("Location"))
+	}
+	resp.Body.Close()
+	// Anonymous non-browser request still gets the S3 error.
+	resp, _ = http.Get(e.url + "/")
+	if resp.StatusCode != 403 {
+		t.Fatalf("anonymous S3 ListBuckets: %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	// SDK ListBuckets still works.
+	if _, err := e.s3.ListBuckets(ctx, &s3.ListBucketsInput{}); err != nil {
+		t.Fatal(err)
+	}
+	// Without the admin panel, a short explanation page is shown.
+	e2 := startServer(t, func(c *config.Config) { c.Admin.Enabled = false })
+	req, _ = http.NewRequest("GET", e2.url+"/", nil)
+	req.Header.Set("Accept", "text/html")
+	resp, _ = noFollow.Do(req)
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 || !strings.Contains(string(b), "Tijori is running") {
+		t.Fatalf("landing page: %d %s", resp.StatusCode, b)
+	}
+}
+
+// A presigned upload URL must not be usable to copy another object: extra
+// x-amz-* headers that were not signed are refused.
+func TestPresignedURLCannotAddUnsignedHeaders(t *testing.T) {
+	e := startServer(t, func(c *config.Config) { c.Buckets["avatars"] = config.BucketConfig{PublicRead: true} })
+	if _, err := e.s3.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: aws.String("secret-docs")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.s3.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("secret-docs"), Key: aws.String("payroll.csv"), Body: strings.NewReader("salaries")}); err != nil {
+		t.Fatal(err)
+	}
+	u, _ := s3.NewPresignClient(e.s3).PresignPutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("avatars"), Key: aws.String("u1.jpg")})
+	req, _ := http.NewRequest(http.MethodPut, u.URL, nil)
+	req.Header.Set("X-Amz-Copy-Source", "/secret-docs/payroll.csv")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 403 {
+		t.Fatalf("unsigned copy-source accepted: %d", resp.StatusCode)
+	}
+	if r, _ := http.Get(e.url + "/avatars/u1.jpg"); r.StatusCode != 404 {
+		t.Fatalf("object was created: %d", r.StatusCode)
+	}
+	// The same URL still works for its real purpose.
+	req, _ = http.NewRequest(http.MethodPut, u.URL, strings.NewReader("avatar"))
+	resp, _ = http.DefaultClient.Do(req)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("normal presigned upload: %d", resp.StatusCode)
+	}
+}
+
+// Unfinished multipart uploads count against the bucket quota.
+func TestQuotaCountsUnfinishedUploads(t *testing.T) {
+	e := startServer(t, func(c *config.Config) { c.Buckets["quota-b"] = config.BucketConfig{MaxSize: 1 << 20} })
+	if _, err := e.s3.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("quota-b"), Key: aws.String("base"), Body: bytes.NewReader(make([]byte, 900<<10))}); err != nil {
+		t.Fatal(err)
+	}
+	accepted := 0
+	for i := 0; i < 5; i++ {
+		cm, err := e.s3.CreateMultipartUpload(ctx, &s3.CreateMultipartUploadInput{Bucket: aws.String("quota-b"), Key: aws.String(fmt.Sprintf("u%d", i))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = e.s3.UploadPart(ctx, &s3.UploadPartInput{Bucket: aws.String("quota-b"), Key: aws.String(fmt.Sprintf("u%d", i)), UploadId: cm.UploadId,
+			PartNumber: aws.Int32(1), Body: bytes.NewReader(make([]byte, 50<<10))})
+		if err == nil {
+			accepted++
+		} else if errCode(err) != "QuotaExceeded" {
+			t.Fatalf("unexpected error %v", err)
+		}
+	}
+	// 900 KB used + 1 MB quota leaves room for two 50 KB parts, not five.
+	if accepted != 2 {
+		t.Fatalf("accepted %d parts beyond quota", accepted)
+	}
+}

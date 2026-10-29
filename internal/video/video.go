@@ -320,10 +320,26 @@ var presets = map[string]preset{
 // PresetNames lists supported presets.
 func PresetNames() []string { return []string{"thumbnail", "480p", "720p", "1080p"} }
 
+// inputGuard limits what ffmpeg may open for an uploaded file: plain local
+// files and real video containers only. Formats that reference other files
+// (HLS playlists, concat lists, image sequences) could otherwise make ffmpeg
+// read objects from other buckets.
+var inputGuard = []string{
+	"-protocol_whitelist", "file",
+	"-format_whitelist", "mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,avi,mpeg,mpegts,flv,asf,ogg",
+}
+
 func (m *Manager) ffmpegRun(args []string) error {
 	ctx, cancel := context.WithTimeout(m.ctx, 2*time.Hour)
 	defer cancel()
-	full := append([]string{"-y", "-hide_banner", "-loglevel", "error", "-nostdin"}, args...)
+	var guarded []string
+	for _, a := range args {
+		if a == "-i" {
+			guarded = append(guarded, inputGuard...)
+		}
+		guarded = append(guarded, a)
+	}
+	full := append([]string{"-y", "-hide_banner", "-loglevel", "error", "-nostdin"}, guarded...)
 	cmd := exec.CommandContext(ctx, m.ffmpeg, full...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

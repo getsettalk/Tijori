@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getsettalk/Tijori/internal/config"
 	"github.com/getsettalk/Tijori/internal/state"
 	"github.com/getsettalk/Tijori/internal/storage"
 )
@@ -276,6 +277,9 @@ func Restore(t Target, dataDir, snapshot string, progress func(string, ...any)) 
 		return res, err
 	}
 	for _, b := range m.Buckets {
+		if !config.ValidBucketName(b) {
+			return res, fmt.Errorf("backup manifest contains an invalid bucket name %q", b)
+		}
 		if !store.BucketExists(b) {
 			if err := store.CreateBucket(b); err != nil {
 				return res, fmt.Errorf("bucket %s: %w", b, err)
@@ -293,7 +297,7 @@ func Restore(t Target, dataDir, snapshot string, progress func(string, ...any)) 
 	for _, id := range ids {
 		e := m.Files[id]
 		bucket, key, _ := strings.Cut(id, "/")
-		if storage.ValidateKey(key) != nil {
+		if !config.ValidBucketName(bucket) || storage.ValidateKey(key) != nil {
 			continue
 		}
 		if info, err := store.StatObject(bucket, key); err == nil && info.Size == e.Size && info.ETag == e.ETag {

@@ -28,6 +28,15 @@
 - Behind a reverse proxy (Caddy, Nginx, Coolify) the real client address is taken from the
   right-most `X-Forwarded-For` entry, and only when the direct peer is a private or loopback
   address. Clients cannot fake it, and one attacker's failed logins do not lock out everyone else.
+- Every `x-amz-*` header that changes a request must be signed. A presigned upload URL cannot be
+  turned into a copy of another object by adding headers (S3's `HeadersNotSigned` rule).
+- ffmpeg may only open local files in real video containers, so an uploaded playlist cannot
+  make it read files from other buckets.
+- Quotas count unfinished multipart uploads, and a bucket can have at most 1000 of them.
+- Backups and archives are checked on restore/import: no `..`, backslashes, absolute paths or
+  invalid bucket names.
+- Login rate limiting groups IPv6 clients by /64, only keeps per-user counters for real users,
+  and its memory is bounded.
 - CORS is off unless you list origins in `cors_origins`. Allowing an origin never grants access by
   itself: requests still need a valid signature (or a public bucket).
 - On Windows, keys that would map to device names (`CON`, `NUL`, `COM1`…) or alternate data streams

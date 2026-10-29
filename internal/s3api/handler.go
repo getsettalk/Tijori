@@ -201,6 +201,23 @@ func (h *Handler) route(req *request) error {
 	return s3err.MethodNotAllowed
 }
 
+// readXML reads the whole request body before parsing it, so that payload
+// hash and chunk-signature checks (which run at the end of the body) apply.
+func readXML(body io.Reader, v any) error {
+	const limit = 4 << 20
+	b, err := io.ReadAll(io.LimitReader(body, limit+1))
+	if err != nil {
+		return err
+	}
+	if len(b) > limit {
+		return s3err.MalformedXML.WithMessage("The XML body is too large.")
+	}
+	if err := xml.Unmarshal(b, v); err != nil {
+		return s3err.MalformedXML
+	}
+	return nil
+}
+
 func hasAny(q url.Values, keys ...string) bool {
 	for _, k := range keys {
 		if q.Has(k) {
@@ -312,6 +329,8 @@ func ToS3Error(err error) *s3err.Error {
 		return s3err.InvalidPartOrder
 	case errors.Is(err, storage.ErrEntityTooSmall):
 		return s3err.EntityTooSmall
+	case errors.Is(err, storage.ErrTooManyUploads):
+		return s3err.InvalidRequest.WithMessage(storage.ErrTooManyUploads.Error())
 	case errors.Is(err, storage.ErrInvalidPartNum):
 		return s3err.InvalidArgument.WithMessage(storage.ErrInvalidPartNum.Error())
 	}
@@ -606,6 +625,54 @@ func (h *Handler) Put(bucket, key string, body io.Reader, size int64, opt storag
 	return res, nil
 }
 
+// UploadPart stores one part of a multipart upload after a quota check. It
+// is used by the admin panel's chunked uploads.
+func (h *Handler) UploadPart(bucket, key, id string, number int, body io.Reader, size int64) (storage.Part, error) {
+	if size < 0 {
+		return storage.Part{}, s3err.MissingContentLength
+	}
+	if _, err := h.Store.GetUpload(bucket, key, id); err != nil {
+		return storage.Part{}, err
+	}
+	if err := h.checkPart(bucket, key, id, size); err != nil {
+		return storage.Part{}, err
+	}
+	p, err := h.Store.UploadPart(bucket, key, id, number, body, size, "", 0)
+	if err == nil {
+		h.Stats.BytesIn.Add(p.Size)
+	}
+	return p, err
+}
+
+// CompleteUpload assembles a multipart upload with quota checks, usage
+// accounting and events. minPart is the smallest allowed non-final part.
+func (h *Handler) CompleteUpload(bucket, key, id string, parts []storage.CompletePart, minPart int64) (storage.PutResult, error) {
+	var release func()
+	check := func(total int64) error {
+		var err error
+		release, err = h.Quota.Reserve(bucket, total, h.existingSize(bucket, key))
+		return err
+	}
+	res, err := h.Store.CompleteMultipartUploadMin(bucket, key, id, parts, check, minPart)
+	if release != nil {
+		defer release()
+	}
+	if err != nil {
+		return res, err
+	}
+	h.recordPut(bucket, res)
+	h.Stats.Uploads.Add(1)
+	if h.Events != nil {
+		h.Events.ObjectCreated(bucket, key, res.Info)
+	}
+	return res, nil
+}
+
+func (h *Handler) checkPart(bucket, key, id string, size int64) error {
+	return h.Quota.CheckPart(bucket, size, h.Store.PendingBytes(bucket, key, id),
+		h.Store.PendingUploadBytes(bucket), h.Store.PendingUploadBytes(""))
+}
+
 // Delete removes an object and updates usage. It is used by the admin panel.
 func (h *Handler) Delete(bucket, key string) (bool, error) {
 	size, existed, err := h.Store.DeleteObject(bucket, key)
@@ -846,8 +913,8 @@ func (h *Handler) deleteObjects(req *request) error {
 		return err
 	}
 	var in deleteRequest
-	if err := xml.NewDecoder(io.LimitReader(req.r.Body, 4<<20)).Decode(&in); err != nil {
-		return s3err.MalformedXML
+	if err := readXML(req.r.Body, &in); err != nil {
+		return err
 	}
 	if len(in.Objects) > 1000 {
 		return s3err.MalformedXML.WithMessage("You can delete at most 1000 objects per request.")
@@ -1025,7 +1092,7 @@ func (h *Handler) uploadPart(req *request) error {
 	if _, err := h.Store.GetUpload(req.bucket, req.key, id); err != nil {
 		return err
 	}
-	if err := h.Quota.CheckPart(req.bucket, h.Store.PendingBytes(req.bucket, req.key, id)+size); err != nil {
+	if err := h.checkPart(req.bucket, req.key, id, size); err != nil {
 		return err
 	}
 	p, err := h.Store.UploadPart(req.bucket, req.key, id, num, req.r.Body, size, req.r.Header.Get("Content-Md5"), 0)
@@ -1062,7 +1129,7 @@ func (h *Handler) uploadPartCopy(req *request) error {
 		}
 		start, length = s, n
 	}
-	if err := h.Quota.CheckPart(req.bucket, h.Store.PendingBytes(req.bucket, req.key, id)+length); err != nil {
+	if err := h.checkPart(req.bucket, req.key, id, length); err != nil {
 		return err
 	}
 	f, _, err := h.Store.GetObject(srcB, srcK)
@@ -1083,8 +1150,8 @@ func (h *Handler) completeMultipart(req *request) error {
 		return err
 	}
 	var in completeMultipartUpload
-	if err := xml.NewDecoder(io.LimitReader(req.r.Body, 4<<20)).Decode(&in); err != nil {
-		return s3err.MalformedXML
+	if err := readXML(req.r.Body, &in); err != nil {
+		return err
 	}
 	parts := make([]storage.CompletePart, len(in.Parts))
 	for i, p := range in.Parts {

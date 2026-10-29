@@ -10,6 +10,12 @@ import (
 	"strings"
 )
 
+// TrustForwarded enables reading X-Forwarded-For from private and loopback
+// peers (the trust_proxy_headers setting). Turn it off when Tijori is not
+// behind a reverse proxy and clients on the local network could send the
+// header themselves.
+var TrustForwarded = true
+
 // ClientIP returns the address of the client. When the direct peer is a
 // loopback or private address (a reverse proxy such as Caddy, Nginx or
 // Coolify's Traefik on the same host or network), the right-most public
@@ -22,7 +28,7 @@ func ClientIP(r *http.Request) string {
 		peer = host
 	}
 	ip := net.ParseIP(peer)
-	if ip == nil || !(ip.IsLoopback() || ip.IsPrivate()) {
+	if !TrustForwarded || ip == nil || !(ip.IsLoopback() || ip.IsPrivate()) {
 		return peer
 	}
 	xff := r.Header.Values("X-Forwarded-For")

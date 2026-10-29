@@ -480,6 +480,80 @@ VIEWS.browse = async (main, parts) => {
 };
 
 // uploadFiles sends files one at a time with a progress bar each.
+// Explain HTTP failures in words people can act on.
+function uploadError(status, body) {
+  let msg = "";
+  try { msg = JSON.parse(body).error || ""; } catch (e) { /* not JSON */ }
+  if (msg) return msg;
+  if (status === 499 || status === 502 || status === 504) return `the connection was cut by a proxy (HTTP ${status}). Check your internet connection and try again.`;
+  if (status === 413) return "the file is too big for the reverse proxy in front of Tijori (HTTP 413). Raise its upload limit.";
+  if (status === 0) return "network error";
+  return `HTTP ${status}`;
+}
+
+// sendRequest PUTs a body with progress reporting.
+function sendRequest(url, body, contentType, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    xhr.setRequestHeader("X-CSRF-Token", state.csrf);
+    if (contentType) xhr.setRequestHeader("Content-Type", contentType);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded); };
+    xhr.onload = () => {
+      if (xhr.status < 300) {
+        try { return resolve(JSON.parse(xhr.responseText)); } catch (e) { return resolve({}); }
+      }
+      const err = new Error(uploadError(xhr.status, xhr.responseText));
+      err.status = xhr.status;
+      reject(err);
+    };
+    xhr.onerror = () => { const err = new Error(uploadError(0, "")); err.status = 0; reject(err); };
+    xhr.send(body);
+  });
+}
+
+const CHUNKED_FROM = 8 * 1024 * 1024;
+
+// uploadChunked sends a big file in parts. Each part aims to take about 15
+// seconds, so requests stay far below proxy timeouts (Coolify's proxy stops
+// requests after 60 s) even on slow connections, and a failed part is
+// retried instead of restarting the whole file.
+async function uploadChunked(bucket, key, file, setProgress) {
+  const q = (extra) => `bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(key)}${extra}`;
+  const { id } = await api("POST", "/uploads", { bucket, key, size: file.size, type: file.type });
+  const parts = [];
+  let offset = 0, n = 1, chunk = 2 * 1024 * 1024;
+  try {
+    while (offset < file.size) {
+      const end = Math.min(file.size, offset + chunk);
+      const blob = file.slice(offset, end);
+      let part, attempt = 0;
+      const t0 = performance.now();
+      for (;;) {
+        try {
+          part = await sendRequest(`${API}/uploads/part?${q(`&id=${id}&n=${n}`)}`, blob, "application/octet-stream",
+            (loaded) => setProgress(offset + loaded));
+          break;
+        } catch (e) {
+          // 4xx other than timeouts are final (quota, permissions, too large).
+          if (++attempt >= 4 || (e.status >= 400 && e.status < 499)) throw e;
+          await new Promise((r) => setTimeout(r, 1000 * attempt * attempt));
+        }
+      }
+      const secs = Math.max((performance.now() - t0) / 1000, 0.2);
+      chunk = Math.max(256 * 1024, Math.min(16 * 1024 * 1024, Math.floor((blob.size / secs) * 15)));
+      parts.push({ n, etag: part.etag });
+      offset = end;
+      n++;
+    }
+    return await api("POST", "/uploads/complete", { bucket, key, id, parts });
+  } catch (e) {
+    api("DELETE", `/uploads?${q(`&id=${id}`)}`).catch(() => {});
+    throw e;
+  }
+}
+
+// uploadFiles sends files one at a time with a progress bar each.
 async function uploadFiles(bucket, prefix, files, done) {
   const box = $("#uploads");
   for (const file of files) {
@@ -488,22 +562,14 @@ async function uploadFiles(bucket, prefix, files, done) {
     row.innerHTML = `<div class="top">${esc(file.name)} <span class="muted">${bytes(file.size)}</span></div><div class="bar"><span></span></div>`;
     box.appendChild(row);
     const bar = $(".bar span", row);
+    const setProgress = (sent) => { bar.style.width = (file.size ? (100 * sent) / file.size : 100) + "%"; };
+    const key = prefix + file.name;
     try {
-      await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", `${API}/object?bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(prefix + file.name)}`);
-        xhr.setRequestHeader("X-CSRF-Token", state.csrf);
-        if (file.type) xhr.setRequestHeader("Content-Type", file.type);
-        xhr.upload.onprogress = (e) => { if (e.lengthComputable) bar.style.width = (100 * e.loaded) / e.total + "%"; };
-        xhr.onload = () => {
-          if (xhr.status < 300) return resolve();
-          let msg = xhr.statusText;
-          try { msg = JSON.parse(xhr.responseText).error || msg; } catch (e) { /* not JSON */ }
-          reject(new Error(msg));
-        };
-        xhr.onerror = () => reject(new Error("network error"));
-        xhr.send(file);
-      });
+      if (file.size >= CHUNKED_FROM) {
+        await uploadChunked(bucket, key, file, setProgress);
+      } else {
+        await sendRequest(`${API}/object?bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(key)}`, file, file.type, setProgress);
+      }
       bar.style.width = "100%";
       setTimeout(() => row.remove(), 1500);
     } catch (e) {

@@ -36,7 +36,7 @@ func put(t *testing.T, s *Store, key, body string) PutResult {
 
 func TestValidateKey(t *testing.T) {
 	good := []string{"a", "a/b", "dir/", "a/b/c.txt", "file..txt", "with space", "ünïcødé", ".hidden", "a/.b"}
-	bad := []string{"", "/abs", "a//b", "../x", "a/../b", "a/./b", ".", "..", "a\\b", "nul\x00", ".tijori-dir.json", "a/.tijori-x", strings.Repeat("x", 256), strings.Repeat("a/", 600)}
+	bad := []string{"", "/abs", "a//b", "../x", "a/../b", "a/./b", ".", "..", "a\\b", "nul\x00", ".tijori-dir.json", "a/.tijori-x", ".TIJORI-bucket", "a/.Tijori-Dir", strings.Repeat("x", 256), strings.Repeat("a/", 600)}
 	for _, k := range good {
 		if err := ValidateKey(k); err != nil {
 			t.Errorf("ValidateKey(%q) = %v, want ok", k, err)

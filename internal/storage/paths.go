@@ -40,7 +40,7 @@ func ValidateKey(key string) error {
 			}
 			return ErrInvalidKey
 		}
-		if p == "." || p == ".." || strings.HasPrefix(p, reservedPrefix) {
+		if p == "." || p == ".." || strings.HasPrefix(strings.ToLower(p), reservedPrefix) {
 			return ErrInvalidKey
 		}
 		if len(p) > maxComponent {

@@ -15,9 +15,25 @@ All notable changes are listed here. The format follows
 - Admin login rate limiting uses the real client address behind reverse proxies (Coolify, Nginx,
   Caddy), so one client's failed logins no longer lock everyone out; its memory use is bounded.
 - On Windows, keys that map to device names or alternate data streams are refused.
+- Presigned and signed requests are refused when they carry unsigned `x-amz-*` headers (S3's
+  HeadersNotSigned rule). Before, a presigned upload URL could be turned into a copy of any object
+  its key could read.
+- ffmpeg only opens local files in real video containers, so a playlist cannot read other buckets.
+- `.tijori`-reserved names are checked case-insensitively (macOS/Windows disks).
+- Quotas count unfinished multipart uploads; at most 1000 unfinished uploads per bucket.
+- DeleteObjects and CompleteMultipartUpload verify the payload hash before acting.
+- aws-chunked trailers are size-limited; import/restore reject backslash paths and invalid bucket
+  names; the SSH control socket lives in a private directory.
+- Login limiter: IPv6 /64 grouping, per-user counters only for existing users, bounded memory;
+  `trust_proxy_headers` setting.
 
 ### Added
+- Opening the server address in a browser redirects to the admin panel instead of showing an S3
+  `AccessDenied` XML (S3 clients are unaffected).
 - `cors_origins` for browser uploads with presigned URLs.
+- The admin panel uploads big files (8 MB and up) in parts of about 15 seconds each, with retries,
+  so uploads work behind proxies that cut long requests (Coolify's Traefik stops at 60 s) and on
+  slow connections. Clearer error messages for proxy timeouts.
 - Coolify guide with real screenshots and a recorded walkthrough; "Build the binary yourself" guide.
 - CI runs tests on Linux, macOS and Windows plus `govulncheck`; every release is installed and
   tested on Linux (amd64, arm64), macOS (Intel, Apple Silicon) and Windows, and both Docker images

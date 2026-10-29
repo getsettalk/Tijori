@@ -1,7 +1,9 @@
 package server
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -157,5 +159,20 @@ func TestExportImport(t *testing.T) {
 	// Importing over existing buckets needs --force.
 	if _, err := backup.Import(bytes.NewReader(buf.Bytes()), fresh, "", false); err == nil {
 		t.Fatal("import over existing data should be refused")
+	}
+}
+
+func TestImportRejectsUnsafePaths(t *testing.T) {
+	for _, name := range []string{"tijori-export/data/..\\..\\evil", "tijori-export/data/../../evil", "/abs/evil"} {
+		var buf bytes.Buffer
+		gz := gzip.NewWriter(&buf)
+		tw := tar.NewWriter(gz)
+		_ = tw.WriteHeader(&tar.Header{Name: name, Mode: 0o644, Size: 1, Typeflag: tar.TypeReg})
+		_, _ = tw.Write([]byte("x"))
+		tw.Close()
+		gz.Close()
+		if _, err := backup.Import(&buf, t.TempDir(), "", true); err == nil {
+			t.Errorf("import accepted %q", name)
+		}
 	}
 }

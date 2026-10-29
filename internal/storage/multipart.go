@@ -23,7 +23,12 @@ var (
 	ErrInvalidPartOrder = errors.New("the list of parts was not in ascending order")
 	ErrEntityTooSmall   = errors.New("your proposed upload is smaller than the minimum allowed size (5 MiB for all parts except the last)")
 	ErrInvalidPartNum   = errors.New("part number must be an integer between 1 and 10000")
+	ErrTooManyUploads   = errors.New("too many unfinished multipart uploads in this bucket; complete or abort some first")
 )
+
+// MaxOpenUploads caps unfinished multipart uploads per bucket so that
+// abandoned uploads cannot be used to fill the disk.
+const MaxOpenUploads = 1000
 
 // MinPartSize is S3's minimum size for every part except the last.
 const MinPartSize = 5 << 20
@@ -73,6 +78,9 @@ func (s *Store) CreateMultipartUpload(bucket, key string, opt PutOptions) (strin
 	}
 	if !s.BucketExists(bucket) {
 		return "", ErrNoSuchBucket
+	}
+	if ups, _ := s.ListUploads(bucket, ""); len(ups) >= MaxOpenUploads {
+		return "", ErrTooManyUploads
 	}
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
@@ -195,6 +203,17 @@ func (s *Store) ListParts(bucket, key, id string) ([]Part, error) {
 	return parts, nil
 }
 
+// PendingUploadBytes is the size of all parts of unfinished uploads in a
+// bucket ("" for every bucket). Quotas count these bytes too.
+func (s *Store) PendingUploadBytes(bucket string) int64 {
+	ups, _ := s.ListUploads(bucket, "")
+	var n int64
+	for _, up := range ups {
+		n += s.PendingBytes(up.Bucket, up.Key, up.ID)
+	}
+	return n
+}
+
 // PendingBytes is the total size of parts uploaded so far.
 func (s *Store) PendingBytes(bucket, key, id string) int64 {
 	parts, _ := s.ListParts(bucket, key, id)
@@ -208,6 +227,13 @@ func (s *Store) PendingBytes(bucket, key, id string) int64 {
 // CompleteMultipartUpload validates the part list, assembles the object and
 // moves it into place. The ETag is the MD5 of the part MD5s plus "-N".
 func (s *Store) CompleteMultipartUpload(bucket, key, id string, want []CompletePart, check func(total int64) error) (PutResult, error) {
+	return s.CompleteMultipartUploadMin(bucket, key, id, want, check, MinPartSize)
+}
+
+// CompleteMultipartUploadMin is CompleteMultipartUpload with a custom
+// minimum part size. The admin panel uses small parts so each request stays
+// short behind proxies with request timeouts; the S3 API keeps S3's 5 MiB.
+func (s *Store) CompleteMultipartUploadMin(bucket, key, id string, want []CompletePart, check func(total int64) error, minPart int64) (PutResult, error) {
 	up, err := s.GetUpload(bucket, key, id)
 	if err != nil {
 		return PutResult{}, err
@@ -235,7 +261,7 @@ func (s *Store) CompleteMultipartUpload(bucket, key, id string, want []CompleteP
 		if !ok || strings.Trim(w.ETag, `"`) != p.ETag {
 			return PutResult{}, ErrInvalidPart
 		}
-		if i < len(want)-1 && p.Size < MinPartSize {
+		if i < len(want)-1 && p.Size < minPart {
 			return PutResult{}, ErrEntityTooSmall
 		}
 		raw, _ := hex.DecodeString(p.ETag)

@@ -36,7 +36,12 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ip := clientIP(r)
-	if blocked, wait := h.limiter.blocked(ip, in.Username); blocked {
+	_, known := h.DB.User(in.Username)
+	limitUser := ""
+	if known {
+		limitUser = in.Username
+	}
+	if blocked, wait := h.limiter.blocked(ip, limitUser); blocked {
 		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
 		apiError(w, http.StatusTooManyRequests, fmt.Sprintf("too many failed logins; try again in %d minutes", int(wait.Minutes())+1))
 		return
@@ -48,7 +53,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		hash = string(dummyHash())
 	}
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.Password)) != nil || !ok {
-		h.limiter.fail(ip, in.Username)
+		h.limiter.fail(ip, limitUser)
 		h.Log.Warn("admin login failed", "user", in.Username, "remote", ip)
 		apiError(w, http.StatusUnauthorized, "wrong user name or password")
 		return
@@ -377,6 +382,102 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, toFileView(res.Info))
+}
+
+// Chunked uploads: the browser sends big files in small parts so that each
+// request finishes well within reverse-proxy timeouts (Coolify's Traefik
+// cuts requests after 60 seconds by default) and failed parts can be retried.
+
+func (h *Handler) startUpload(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Bucket string `json:"bucket"`
+		Key    string `json:"key"`
+		Size   int64  `json:"size"`
+		Type   string `json:"type"`
+	}
+	if err := decodeJSON(r, &in); err != nil || in.Size < 0 {
+		apiError(w, 400, "bad request")
+		return
+	}
+	if !h.Store.BucketExists(in.Bucket) {
+		apiError(w, 404, "bucket not found")
+		return
+	}
+	// Check quota and size limits before any byte is sent.
+	var existing int64
+	if info, err := h.Store.StatObject(in.Bucket, in.Key); err == nil {
+		existing = info.Size
+	}
+	release, err := h.Quota.Reserve(in.Bucket, in.Size, existing)
+	if err != nil {
+		s3Status(w, err)
+		return
+	}
+	release()
+	ct := in.Type
+	if ct == "application/octet-stream" {
+		ct = ""
+	}
+	id, err := h.Store.CreateMultipartUpload(in.Bucket, in.Key, storage.PutOptions{ContentType: ct})
+	if err != nil {
+		s3Status(w, err)
+		return
+	}
+	writeJSON(w, 201, map[string]string{"id": id})
+}
+
+func (h *Handler) uploadPart(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	n, err := strconv.Atoi(q.Get("n"))
+	if err != nil || n < 1 || n > 10000 {
+		apiError(w, 400, "part number must be 1-10000")
+		return
+	}
+	if r.ContentLength < 0 {
+		apiError(w, http.StatusLengthRequired, "Content-Length is required")
+		return
+	}
+	p, err := h.S3.UploadPart(q.Get("bucket"), q.Get("key"), q.Get("id"), n, r.Body, r.ContentLength)
+	if err != nil {
+		s3Status(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"n": p.Number, "etag": p.ETag, "size": p.Size})
+}
+
+func (h *Handler) completeUpload(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Bucket string `json:"bucket"`
+		Key    string `json:"key"`
+		ID     string `json:"id"`
+		Parts  []struct {
+			N    int    `json:"n"`
+			ETag string `json:"etag"`
+		} `json:"parts"`
+	}
+	if err := decodeJSON(r, &in); err != nil {
+		apiError(w, 400, "bad request")
+		return
+	}
+	parts := make([]storage.CompletePart, len(in.Parts))
+	for i, p := range in.Parts {
+		parts[i] = storage.CompletePart{Number: p.N, ETag: p.ETag}
+	}
+	res, err := h.S3.CompleteUpload(in.Bucket, in.Key, in.ID, parts, 0)
+	if err != nil {
+		s3Status(w, err)
+		return
+	}
+	writeJSON(w, 200, toFileView(res.Info))
+}
+
+func (h *Handler) abortUpload(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	if err := h.Store.AbortMultipartUpload(q.Get("bucket"), q.Get("key"), q.Get("id")); err != nil {
+		s3Status(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
 func (h *Handler) deleteObject(w http.ResponseWriter, r *http.Request) {

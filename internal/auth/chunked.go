@@ -184,10 +184,13 @@ func (c *chunkedReader) readTrailer() error {
 	var canonical bytes.Buffer
 	var trailerSig string
 	headers := map[string]string{}
-	for {
+	for lines := 0; ; lines++ {
 		line, err := c.readLine()
 		if err != nil || line == "" {
 			break
+		}
+		if lines >= 16 || canonical.Len() > 8<<10 {
+			return s3err.InvalidChunk.WithMessage("Too many or too large trailing headers.")
 		}
 		name, val, ok := strings.Cut(line, ":")
 		if !ok {

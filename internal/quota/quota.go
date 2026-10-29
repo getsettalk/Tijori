@@ -164,13 +164,33 @@ func (m *Manager) Reserve(bucket string, size, replacing int64) (func(), error) 
 	}, nil
 }
 
-// CheckPart validates a multipart upload that will hold total bytes so far.
-func (m *Manager) CheckPart(bucket string, total int64) error {
-	release, err := m.Reserve(bucket, total, 0)
-	if err != nil {
+// CheckPart validates a new multipart part of size bytes. uploadPending is
+// what this upload already holds; bucketPending and allPending are the
+// parts of every unfinished upload in the bucket and on the server, which
+// count against quotas until the uploads complete or are aborted.
+func (m *Manager) CheckPart(bucket string, size, uploadPending, bucketPending, allPending int64) error {
+	if err := m.checkObjectSize(bucket, uploadPending+size); err != nil {
 		return err
 	}
-	release()
+	s := m.Settings(bucket)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s.MaxSize > 0 {
+		used := m.usage[bucket].Bytes + m.reserved[bucket] + bucketPending
+		if used+size > s.MaxSize {
+			return s3err.QuotaExceeded.WithMessage(fmt.Sprintf(
+				"Bucket %q is full: quota %s, used %s (including unfinished uploads), this part needs %s more.",
+				bucket, config.FormatBytes(s.MaxSize), config.FormatBytes(used), config.FormatBytes(size)))
+		}
+	}
+	if max := int64(m.cfg.MaxTotal); max > 0 {
+		used := m.totalLocked() + m.reservedTotal + allPending
+		if used+size > max {
+			return s3err.QuotaExceeded.WithMessage(fmt.Sprintf(
+				"Server storage limit reached: max_total %s, used %s (including unfinished uploads).",
+				config.FormatBytes(max), config.FormatBytes(used)))
+		}
+	}
 	return nil
 }
 

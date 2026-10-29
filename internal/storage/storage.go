@@ -740,7 +740,7 @@ func (s *Store) ListObjects(bucket string, opt ListOptions) (ListResult, error) 
 		list := make([]ent, 0, len(entries))
 		for _, e := range entries {
 			name := e.Name()
-			if strings.HasPrefix(name, reservedPrefix) {
+			if strings.HasPrefix(strings.ToLower(name), reservedPrefix) {
 				continue
 			}
 			isDir := e.IsDir()

@@ -37,6 +37,9 @@ type Config struct {
 	// /img route (for example presigned uploads from a browser). Empty turns
 	// CORS off; "*" allows any origin.
 	CORSOrigins []string `toml:"cors_origins"`
+	// TrustProxyHeaders uses X-Forwarded-For from private/loopback peers to
+	// find the real client address (rate limits, logs). Default true.
+	TrustProxyHeaders bool `toml:"trust_proxy_headers"`
 
 	// AccessKey and SecretKey define an optional root key with full access.
 	// Normally set through TIJORI_ACCESS_KEY / TIJORI_SECRET_KEY (Docker).
@@ -99,15 +102,16 @@ type BackupConfig struct {
 // Defaults returns a configuration with every default applied.
 func Defaults() *Config {
 	return &Config{
-		Listen:        ":9000",
-		DataDir:       "./data",
-		Region:        "auto",
-		MaxObjectSize: 5 << 30,
-		LogFormat:     "text",
-		LogLevel:      "info",
-		ErrorFormat:   "auto",
-		Admin:         AdminConfig{Enabled: true, Path: "/_admin"},
-		Buckets:       map[string]BucketConfig{},
+		Listen:            ":9000",
+		DataDir:           "./data",
+		Region:            "auto",
+		MaxObjectSize:     5 << 30,
+		LogFormat:         "text",
+		LogLevel:          "info",
+		ErrorFormat:       "auto",
+		TrustProxyHeaders: true,
+		Admin:             AdminConfig{Enabled: true, Path: "/_admin"},
+		Buckets:           map[string]BucketConfig{},
 		Images: ImagesConfig{
 			Enabled:      true,
 			MaxWidth:     4000,
@@ -524,6 +528,13 @@ func (c *Config) Redacted() *Config {
 	cp.SecretKey = mask(c.SecretKey)
 	cp.Admin.Password = mask(c.Admin.Password)
 	cp.Video.WebhookSecret = mask(c.Video.WebhookSecret)
+	if u, err := url.Parse(c.Video.Webhook); err == nil && (u.User != nil || u.RawQuery != "") {
+		u.User = nil
+		if u.RawQuery != "" {
+			u.RawQuery = "********"
+		}
+		cp.Video.Webhook = u.String()
+	}
 	if u, err := url.Parse(c.Backup.To); err == nil && u.User != nil {
 		if _, has := u.User.Password(); has {
 			u.User = url.UserPassword(u.User.Username(), "********")

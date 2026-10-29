@@ -39,6 +39,13 @@ not allowed on all buckets. Anonymous requests can only download from public buc
 Nginx blocks uploads over 1 MB by default. Add `client_max_body_size 0;`
 (see [HTTPS](https.md)) and reload Nginx.
 
+## Uploads stop with `499` or `504` after a minute or so
+
+A reverse proxy cut the request because it took too long (Coolify's Traefik: 60 s by default;
+Nginx: `proxy_read_timeout` / `client_body_timeout`). The admin panel uploads big files in parts
+since 1.0.1; S3 SDKs use multipart for big files. To allow long single uploads, raise the proxy's
+timeout (see [Coolify](coolify.md#long-uploads-and-the-60-second-proxy-limit)).
+
 ## `QuotaExceeded` or `EntityTooLarge`
 
 A bucket, server or file-size limit was reached. See [Quotas](quotas.md).
@@ -65,6 +72,18 @@ sudo tijori admin password
 
 Tijori creates missing metadata when a file is first read. Run
 `tijori usage --recalc` to update the counters.
+
+## Opening the address shows `AccessDenied` XML
+
+The bare address (`/`) is the S3 API, not a web page: for S3 clients it means "list my buckets",
+which needs an access key. That is why a browser without a key gets `AccessDenied`. It is the same
+on Amazon S3, and it keeps your bucket names private.
+
+- Admin panel: add `/_admin/` to the address.
+- A file in a public bucket: `/bucket/path/file.jpg`.
+
+Since 1.0.1, opening the bare address in a browser redirects to the admin panel automatically
+(or shows a short "Tijori is running" page when the panel is disabled). Apps are not affected.
 
 ## Browser says "blocked by CORS policy"
 

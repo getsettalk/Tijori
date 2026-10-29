@@ -145,7 +145,7 @@ func Import(r io.Reader, dataDir, configDest string, force bool) (ImportResult, 
 			return res, err
 		}
 		name := path.Clean(hdr.Name)
-		if strings.HasPrefix(name, "/") || name == ".." || strings.HasPrefix(name, "../") || strings.Contains(name, "/../") {
+		if strings.ContainsAny(hdr.Name, "\\\x00") || strings.HasPrefix(name, "/") || name == ".." || strings.HasPrefix(name, "../") || strings.Contains(name, "/../") {
 			return res, fmt.Errorf("unsafe path in archive: %q", hdr.Name)
 		}
 		rest, ok := strings.CutPrefix(name, archiveRoot+"/")
@@ -170,6 +170,9 @@ func Import(r io.Reader, dataDir, configDest string, force bool) (ImportResult, 
 			rel := strings.TrimPrefix(rest, "data/")
 			if rel == "" {
 				continue
+			}
+			if !filepath.IsLocal(filepath.FromSlash(rel)) {
+				return res, fmt.Errorf("unsafe path in archive: %q", hdr.Name)
 			}
 			dst = filepath.Join(dataDir, filepath.FromSlash(rel))
 			if rel == "tijori.db.json" {

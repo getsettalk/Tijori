@@ -183,8 +183,16 @@ func openSSH(dest string) (*sshTarget, error) {
 	} else if strings.HasPrefix(root, "/~/") {
 		root = root[3:]
 	}
-	ctl := filepath.Join(os.TempDir(), fmt.Sprintf("tijori-ssh-%d", os.Getpid()))
-	return &sshTarget{host: host, port: u.Port(), root: root, control: ctl}, nil
+	if strings.HasPrefix(host, "-") {
+		return nil, fmt.Errorf("invalid sftp host %q", host)
+	}
+	// The SSH control socket lives in a private (0700) directory so no other
+	// local user can plant or hijack it.
+	dir, err := os.MkdirTemp("", "tijori-ssh-")
+	if err != nil {
+		return nil, err
+	}
+	return &sshTarget{host: host, port: u.Port(), root: root, control: filepath.Join(dir, "ctl")}, nil
 }
 
 func (t *sshTarget) String() string {
@@ -202,7 +210,7 @@ func (t *sshTarget) run(cmd string, stdin io.Reader, stdout io.Writer) error {
 	if t.port != "" {
 		args = append(args, "-p", t.port)
 	}
-	args = append(args, t.host, cmd)
+	args = append(args, "--", t.host, cmd)
 	c := exec.Command("ssh", args...)
 	c.Stdin = stdin
 	c.Stdout = stdout

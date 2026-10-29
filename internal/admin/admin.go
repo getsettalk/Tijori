@@ -208,6 +208,14 @@ func (h *Handler) api(w http.ResponseWriter, r *http.Request, p string) {
 		h.listObjects(w, r)
 	case route == "PUT /object":
 		h.upload(w, r)
+	case route == "POST /uploads":
+		h.startUpload(w, r)
+	case route == "PUT /uploads/part":
+		h.uploadPart(w, r)
+	case route == "POST /uploads/complete":
+		h.completeUpload(w, r)
+	case route == "DELETE /uploads":
+		h.abortUpload(w, r)
 	case route == "DELETE /object":
 		h.deleteObject(w, r)
 	case route == "POST /folder":
