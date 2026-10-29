@@ -43,7 +43,7 @@ it speaks the same API as Amazon S3.
     <td valign="top"><img src="docs/images/readme/icon-quota.svg" width="44" alt=""><br><b>Quotas</b><br>Limits per bucket, per file and for the whole server, checked before writing.</td>
   </tr>
   <tr>
-    <td valign="top"><img src="docs/images/readme/icon-backup.svg" width="44" alt=""><br><b>Backups</b><br>To a folder, an SSH server or any S3 service (B2, R2). Move servers with one export.</td>
+    <td valign="top"><img src="docs/images/readme/icon-backup.svg" width="44" alt=""><br><b>Backups</b><br>Download everything as one file from the admin panel, or back up to a folder, SSH or any S3 service. Restore with one upload.</td>
     <td valign="top"><img src="docs/images/readme/icon-secure.svg" width="44" alt=""><br><b>Secure by default</b><br>Per-app keys, read/write permissions, CSRF-protected admin, sandboxed HTML.</td>
     <td valign="top"><img src="docs/images/readme/icon-deploy.svg" width="44" alt=""><br><b>Runs anywhere</b><br>Laptop, VPS with systemd, Docker, Docker Compose or Coolify.</td>
   </tr>
@@ -305,6 +305,13 @@ search and drag-and-drop · access keys (the secret is shown once, with ready La
 share links · backups · settings. Read-only users too: `tijori admin password --user viewer --readonly`.
 
 ## 💾 Backups and moving servers
+
+**No extra server needed:** in the admin panel, **Backup → Download backup** saves everything
+(buckets, files, keys, settings) as one file on your computer. **Restore from a backup file**
+brings it back, on the same or a new server, while it runs. The file is checked completely before
+anything changes.
+
+From a terminal:
 
 ```sh
 tijori backup --to /mnt/backup/tijori                     # folder, sftp://user@host/path or s3://bucket?endpoint=...

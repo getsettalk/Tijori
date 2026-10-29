@@ -305,6 +305,56 @@ func (db *DB) RevokeKey(id string) error {
 	})
 }
 
+// ImportStats counts what ImportFrom changed.
+type ImportStats struct {
+	KeysAdded   int `json:"keys_added"`
+	KeysUpdated int `json:"keys_updated"`
+	UsersAdded  int `json:"users_added"`
+}
+
+// ImportFrom merges access keys and admin users from another server's
+// tijori.db.json, for example from a backup file. Keys are added; with
+// replace, keys that already exist take the backup's secret and access.
+// Users are only added, so existing passwords never change and the person
+// restoring cannot lock themselves out. Usage and sessions are not taken.
+func (db *DB) ImportFrom(b []byte, replace bool) (ImportStats, error) {
+	var st ImportStats
+	var in data
+	if err := json.Unmarshal(b, &in); err != nil {
+		return st, fmt.Errorf("the database in the backup is damaged: %w", err)
+	}
+	err := db.mutate(func() error {
+		for _, k := range in.Keys {
+			if k.AccessKey == "" || k.SecretKey == "" || len(k.AccessKey) > 128 || len(k.SecretKey) > 256 ||
+				(k.Permission != PermRead && k.Permission != PermWrite && k.Permission != PermReadWrite) {
+				continue
+			}
+			k.FromEnv = false
+			i := slices.IndexFunc(db.d.Keys, func(e AccessKey) bool { return e.AccessKey == k.AccessKey })
+			switch {
+			case i < 0:
+				db.d.Keys = append(db.d.Keys, k)
+				st.KeysAdded++
+			case replace:
+				db.d.Keys[i] = k
+				st.KeysUpdated++
+			}
+		}
+		for _, u := range in.Users {
+			if u.Username == "" || len(u.PasswordHash) < 4 || u.PasswordHash[0] != '$' ||
+				(u.Role != "admin" && u.Role != "readonly") {
+				continue
+			}
+			if !slices.ContainsFunc(db.d.Users, func(e AdminUser) bool { return e.Username == u.Username }) {
+				db.d.Users = append(db.d.Users, u)
+				st.UsersAdded++
+			}
+		}
+		return nil
+	})
+	return st, err
+}
+
 // User returns an admin user by name.
 func (db *DB) User(name string) (AdminUser, bool) {
 	db.mu.Lock()

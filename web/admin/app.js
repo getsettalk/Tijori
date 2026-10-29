@@ -37,6 +37,19 @@ const STRINGS = {
     updateOff: "Update check is off", notChecked: "Not checked yet", lastChecked: "Last checked",
     releaseNotes: "Release notes", newRelease: "Tijori {latest} is available. This server runs {current}.",
     upgradeHint: "Docker or Coolify: redeploy to pull the new image. Binary: run the install command again or download the new release. Your files are kept.",
+    fullBackup: "Download a full backup", downloadBackup: "Download backup",
+    fullBackupHint: "One .tar.gz file with every bucket, file, access key and setting. Keep it on your computer or an external drive.",
+    fullBackupWhere: "Restore it on this page, or on any server with",
+    confirmPassword: "Confirm your password", downloadStarted: "Download started",
+    secretWarning: "The file contains the secret of every access key. Keep it somewhere safe.",
+    restoreFrom: "Restore from a backup file",
+    restoreHint: "Upload a file from \u201cDownload backup\u201d or tijori export. Its buckets, files and keys are added to this server; nothing else is deleted.",
+    replaceExisting: "Replace files and keys that already exist", keepHint: "Off: files already on this server stay as they are.",
+    chooseBackup: "Choose backup file\u2026", restoreReadonly: "Read-only accounts cannot restore.",
+    restoreConfirm: "Restore {name} ({size}) into this server?",
+    st_uploading: "Uploading the backup file\u2026", st_checking: "Checking the whole file before changing anything\u2026",
+    st_restoring: "Restoring files\u2026", st_done: "Restore finished", st_failed: "Restore failed",
+    automatic: "Automatic backups", notScheduled: "Not scheduled", restore: "Restore",
   },
 };
 
@@ -520,7 +533,6 @@ VIEWS.browse = async (main, parts) => {
   drop.addEventListener("drop", (e) => startUploads(Array.from(e.dataTransfer.files)));
 };
 
-// uploadFiles sends files one at a time with a progress bar each.
 // Explain HTTP failures in words people can act on.
 function uploadError(status, body) {
   let msg = "";
@@ -555,41 +567,48 @@ function sendRequest(url, body, contentType, onProgress) {
 
 const CHUNKED_FROM = 8 * 1024 * 1024;
 
-// uploadChunked sends a big file in parts. Each part aims to take about 15
+// sendInParts sends a file in parts. Each part aims to take about 15
 // seconds, so requests stay far below proxy timeouts (Coolify's proxy stops
 // requests after 60 s) even on slow connections, and a failed part is
-// retried instead of restarting the whole file.
+// retried, smaller, instead of restarting the whole file.
+// sendPart(blob, offset, n, onProgress) sends one part and returns its result.
+async function sendInParts(file, setProgress, sendPart) {
+  const results = [];
+  let offset = 0, n = 1, chunk = 2 * 1024 * 1024;
+  while (offset < file.size) {
+    let res, blob, t0, attempt = 0;
+    for (;;) {
+      blob = file.slice(offset, Math.min(file.size, offset + chunk));
+      t0 = performance.now();
+      try {
+        res = await sendPart(blob, offset, n, (loaded) => setProgress(offset + loaded));
+        break;
+      } catch (e) {
+        // 4xx other than timeouts are final (quota, permissions, too large).
+        if (++attempt >= 4 || (e.status >= 400 && e.status < 499 && e.status !== 408)) throw e;
+        // The connection got slower or a proxy cut the request: retry with
+        // a smaller part so it fits in the proxy's time limit.
+        chunk = Math.max(256 * 1024, Math.floor(blob.size / 2));
+        await new Promise((r) => setTimeout(r, 1000 * attempt * attempt));
+      }
+    }
+    const secs = Math.max((performance.now() - t0) / 1000, 0.2);
+    chunk = Math.max(256 * 1024, Math.min(16 * 1024 * 1024, Math.floor((blob.size / secs) * 15)));
+    results.push(res);
+    offset += blob.size;
+    n++;
+  }
+  return results;
+}
+
+// uploadChunked uploads a big file as a multipart upload.
 async function uploadChunked(bucket, key, file, setProgress) {
   const q = (extra) => `bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(key)}${extra}`;
   const { id } = await api("POST", "/uploads", { bucket, key, size: file.size, type: file.type });
-  const parts = [];
-  let offset = 0, n = 1, chunk = 2 * 1024 * 1024;
   try {
-    while (offset < file.size) {
-      let part, blob, t0, attempt = 0;
-      for (;;) {
-        blob = file.slice(offset, Math.min(file.size, offset + chunk));
-        t0 = performance.now();
-        try {
-          part = await sendRequest(`${API}/uploads/part?${q(`&id=${id}&n=${n}`)}`, blob, "application/octet-stream",
-            (loaded) => setProgress(offset + loaded));
-          break;
-        } catch (e) {
-          // 4xx other than timeouts are final (quota, permissions, too large).
-          if (++attempt >= 4 || (e.status >= 400 && e.status < 499)) throw e;
-          // The connection got slower or a proxy cut the request: retry with
-          // a smaller part so it fits in the proxy's time limit.
-          chunk = Math.max(256 * 1024, Math.floor(blob.size / 2));
-          await new Promise((r) => setTimeout(r, 1000 * attempt * attempt));
-        }
-      }
-      const secs = Math.max((performance.now() - t0) / 1000, 0.2);
-      chunk = Math.max(256 * 1024, Math.min(16 * 1024 * 1024, Math.floor((blob.size / secs) * 15)));
-      parts.push({ n, etag: part.etag });
-      offset += blob.size;
-      n++;
-    }
-    return await api("POST", "/uploads/complete", { bucket, key, id, parts });
+    const parts = await sendInParts(file, setProgress, (blob, offset, n, onProgress) =>
+      sendRequest(`${API}/uploads/part?${q(`&id=${id}&n=${n}`)}`, blob, "application/octet-stream", onProgress));
+    return await api("POST", "/uploads/complete", { bucket, key, id, parts: parts.map((p) => ({ n: p.n, etag: p.etag })) });
   } catch (e) {
     api("DELETE", `/uploads?${q(`&id=${id}`)}`).catch(() => {});
     throw e;
@@ -727,18 +746,30 @@ AWS_USE_PATH_STYLE_ENDPOINT=true`;
 // ---- backup -----------------------------------------------------------------
 
 VIEWS.backup = async (main) => {
-  const b = await api("GET", "/backup");
+  const [b, job, o] = await Promise.all([api("GET", "/backup"), api("GET", "/restore"), api("GET", "/overview")]);
   const l = b.last;
   main.innerHTML = `<h1>${t("backup")}</h1><div class="grid two">
-    <div class="card"><dl class="kv">
+    <div class="card"><h2>${t("fullBackup")}</h2><p class="small">${t("fullBackupHint")}</p>
+      <p class="small muted">${bytes(o.total)} · ${o.objects} ${t("objects").toLowerCase()} · ${o.buckets.length} ${t("bucketsCount").toLowerCase()}</p>
+      ${ro() ? "" : `<button class="btn primary" id="export">${t("downloadBackup")}</button>`}
+      <p class="small muted">${t("fullBackupWhere")} <code>tijori import</code>.</p></div>
+    <div class="card"><h2>${t("restoreFrom")}</h2><p class="small">${t("restoreHint")}</p>
+      ${ro() ? `<p class="small muted">${t("restoreReadonly")}</p>` : `
+      <label class="check"><input type="checkbox" id="replace" checked> ${t("replaceExisting")}</label>
+      <div class="hint">${t("keepHint")}</div>
+      <input type="file" id="restoreFile" class="hidden" accept=".gz,.tgz,application/gzip">
+      <button class="btn" id="restore">${t("chooseBackup")}</button>`}
+      <div id="restoreBox"></div></div>
+    <div class="card"><h2>${t("automatic")}</h2><dl class="kv">
       <dt>${t("destination")}</dt><dd>${b.configured ? `<code>${esc(b.destination)}</code>` : `<span class="muted">${t("notConfigured")}</span>`}</dd>
-      <dt>${t("schedule")}</dt><dd>${esc(b.schedule || "–")}${b.keep ? ` · keep ${b.keep}` : ""}</dd>
+      <dt>${t("schedule")}</dt><dd>${b.schedule ? `${esc(b.schedule)} · keep ${b.keep}` : `<span class="muted">${t("notScheduled")}</span>`}</dd>
       <dt>${t("lastBackup")}</dt><dd>${l ? `${when(l.finished)} <span class="badge ${l.ok ? "ok" : "bad"}">${l.ok ? t("ok") : t("failed")}</span>` : t("never")}</dd>
       ${l ? `<dt>Copied</dt><dd>${l.copied} files, ${bytes(l.bytes)} (${l.skipped} unchanged)</dd>` : ""}
       ${l && l.error ? `<dt>Error</dt><dd class="small">${esc(l.error)}</dd>` : ""}
-    </dl><br>${ro() ? "" : `<button class="btn primary" id="run" ${!b.configured || b.running ? "disabled" : ""}>${b.running ? t("running") : t("runBackup")}</button>`}</div>
-    <div class="card"><h2>How it works</h2><p class="small">Backups copy every bucket plus your keys to the destination. Only changed files are copied again.
-      Set the destination in <code>tijori.toml</code>:</p>
+    </dl><br>${ro() || !b.configured ? "" : `<button class="btn" id="run" ${b.running ? "disabled" : ""}>${b.running ? t("running") : t("runBackup")}</button>`}</div>
+    <div class="card"><h2>How it works</h2><p class="small">Automatic backups copy every bucket plus your keys to a folder, an SFTP server or
+      another S3 service, on a schedule. Only changed files are copied again. Set the destination in <code>tijori.toml</code>
+      (or as <code>TIJORI_BACKUP_TO</code>, <code>TIJORI_BACKUP_SCHEDULE</code> environment variables):</p>
       <pre class="code">[backup]
 to = "/mnt/backup/tijori"
 # to = "sftp://user@host/backups/tijori"
@@ -750,7 +781,99 @@ keep = 7</pre><p class="small">You can also run <code>tijori backup</code> or <c
     try { await api("POST", "/backup"); toast(t("running")); run.disabled = true; setTimeout(route, 3000); } catch (e) { fail(e); }
   });
   if (b.running) setTimeout(() => { if (location.hash === "#/backup") route(); }, 3000);
+  const exp = $("#export", main);
+  if (exp) exp.addEventListener("click", downloadBackup);
+  const pick = $("#restoreFile", main);
+  if (pick) {
+    $("#restore", main).addEventListener("click", () => pick.click());
+    pick.addEventListener("change", () => {
+      const file = pick.files[0];
+      pick.value = "";
+      if (file) restoreBackup(file, $("#replace", main).checked);
+    });
+  }
+  renderRestore(job);
+  if (job.state === "checking" || job.state === "restoring") watchRestore();
 };
+
+function passwordModal(intro, submitLabel, submit) {
+  return formModal(t("confirmPassword"), `<p class="small">${intro}</p>
+    <div class="field"><label for="confirm-pw">${t("password")}</label><input id="confirm-pw" type="password" name="password" autocomplete="current-password" required></div>`,
+    (form) => submit(form.elements.password.value), submitLabel);
+}
+
+async function downloadBackup() {
+  const r = await passwordModal(esc(t("secretWarning")), t("downloadBackup"), (password) => api("POST", "/export", { password }));
+  if (!r || !r.url) return;
+  // The browser downloads the file itself, straight to disk, however big it is.
+  const a = document.createElement("a");
+  a.href = r.url;
+  a.download = "";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  toast(t("downloadStarted"));
+}
+
+async function restoreBackup(file, replace) {
+  const intro = `${esc(t("restoreConfirm", { name: file.name, size: bytes(file.size) }))}<br>${esc(replace ? t("replaceExisting") : t("keepHint"))}`;
+  const started = await passwordModal(intro, t("restore"), (password) => api("POST", "/restore", { size: file.size, password }));
+  if (!started || !started.id) return;
+  const id = started.id;
+  const btn = $("#restore");
+  if (btn) btn.disabled = true;
+  try {
+    renderRestore({ state: "uploading", size: file.size, received: 0 });
+    await sendInParts(file, (sent) => renderRestore({ state: "uploading", size: file.size, received: sent }), (blob, offset, n, onProgress) =>
+      sendRequest(`${API}/restore/part?id=${encodeURIComponent(id)}&offset=${offset}`, blob, "application/octet-stream", onProgress));
+    renderRestore(await api("POST", "/restore/finish", { id, replace }));
+    await watchRestore();
+  } catch (e) {
+    api("DELETE", `/restore?id=${encodeURIComponent(id)}`).catch(() => {});
+    renderRestore({ state: "failed", error: e.message });
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// watchRestore follows a restore on the server until it ends.
+async function watchRestore() {
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 1000));
+    if (location.hash !== "#/backup") return;
+    let job;
+    try { job = await api("GET", "/restore"); } catch (e) { return; }
+    renderRestore(job);
+    if (job.state !== "checking" && job.state !== "restoring") {
+      if (job.state === "done") route(); // fresh totals on the page
+      return;
+    }
+  }
+}
+
+function renderRestore(job) {
+  const box = $("#restoreBox");
+  if (!box || !job || job.state === "none") return;
+  const bar = (done, total) => `<div class="bar"><span data-progress="${total ? Math.min(100, (100 * done) / total) : 0}"></span></div>`;
+  const at = (job.state === "done" || job.state === "failed") && job.updated ? ` <span class="muted">${esc(when(job.updated))}</span>` : "";
+  let html = `<p class="small"><strong>${t("st_" + job.state)}</strong>${at}</p>`;
+  if (job.state === "uploading") html += bar(job.received, job.size) + `<p class="small muted">${bytes(job.received)} / ${bytes(job.size)}</p>`;
+  if (job.state === "restoring") html += bar(job.done, job.total) + `<p class="small muted">${bytes(job.done)} / ${bytes(job.total)}</p>`;
+  const r = job.result;
+  if (job.state === "done" && r) {
+    const made = r.buckets_created || [];
+    html += `<div class="notice ok"><ul class="small">
+      <li>${r.files} ${t("objects").toLowerCase()} (${bytes(r.bytes)}) restored${r.skipped ? `, ${r.skipped} kept as they were` : ""}</li>
+      ${made.length ? `<li>New buckets: ${made.map(esc).join(", ")}</li>` : ""}
+      <li>Access keys: ${r.keys_added} added${r.keys_updated ? `, ${r.keys_updated} updated` : ""}; admin users: ${r.users_added} added</li>
+      ${r.invalid ? `<li>${r.invalid} files have names this server cannot store and were skipped</li>` : ""}
+      ${r.config_ignored ? `<li>The file also contains a tijori.toml; its settings were not applied.</li>` : ""}
+      </ul></div>`;
+  }
+  if (job.state === "failed") html += `<div class="error-box">${esc(job.error || "")}</div>`;
+  box.innerHTML = html;
+  $$("[data-progress]", box).forEach((el) => { el.style.width = el.dataset.progress + "%"; });
+}
 
 // ---- settings ---------------------------------------------------------------
 

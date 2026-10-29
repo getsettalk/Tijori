@@ -98,6 +98,10 @@ a.badge.warn:hover { text-decoration: underline; }
 .notice { background: var(--accent-soft); color: var(--text); border-left: 4px solid var(--accent); padding: 12px 14px; border-radius: 9px; margin-bottom: 16px; }
 .notice a { margin-left: 6px; font-weight: 600; }
 .notice .small { margin-top: 4px; color: var(--muted); }
+.notice.ok { border-left-color: var(--ok); background: var(--surface-2); }
+.notice ul { margin: 0; padding-left: 18px; }
+#restoreBox { margin-top: 14px; }
+#restoreBox .bar { margin: 6px 0; }
 .ver { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .ver > span:first-child { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar .ver > span:first-child { max-width: 40vw; }

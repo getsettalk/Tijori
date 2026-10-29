@@ -6,7 +6,21 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-29
+
+### Added
+- **Backup → Download backup** in the admin panel: one `.tar.gz` file with every bucket, file,
+  access key and setting, saved by the browser straight to disk (any size). It asks for the
+  password again, and the link works once, for two minutes.
+- **Backup → Restore from a backup file**: upload such a file (or one from `tijori export`) to
+  the same or another server while it runs. The upload goes in parts that fit proxy time limits;
+  the whole file is checked (damaged, cut-off or unsafe files are refused) before anything
+  changes. Buckets, files, metadata, bucket settings, keys and users are added; nothing on the
+  server is deleted; existing admins keep their passwords. Option to keep or replace files that
+  exist on both. Downloads and restores are logged with user and address.
+
 ### Fixed
+- Backup page: the schedule shows "Not scheduled" instead of "– · keep 7" when none is set.
 - Admin panel uploads: when a part fails because the connection got slower or a proxy cut it
   (504, 499, dropped connection), the retry sends a part half the size instead of the same one,
   so uploads keep going on connections whose speed changes.

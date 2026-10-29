@@ -57,6 +57,7 @@ type Handler struct {
 
 	sessions sessions
 	limiter  limiter
+	files    backupFiles
 }
 
 type ctxSession struct {
@@ -264,6 +265,20 @@ func (h *Handler) api(w http.ResponseWriter, r *http.Request, p string) {
 		h.backupStatus(w, r)
 	case route == "POST /backup":
 		h.runBackup(w, r)
+	case route == "POST /export":
+		h.exportLink(w, r, se)
+	case route == "GET /export":
+		h.export(w, r, se)
+	case route == "GET /restore":
+		h.restoreStatus(w, r)
+	case route == "POST /restore":
+		h.restoreStart(w, r, se)
+	case route == "PUT /restore/part":
+		h.restorePart(w, r, se)
+	case route == "POST /restore/finish":
+		h.restoreFinish(w, r, se)
+	case route == "DELETE /restore":
+		h.restoreCancel(w, r, se)
 	case route == "GET /settings":
 		h.settings(w, r)
 	case route == "POST /password":

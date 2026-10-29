@@ -202,6 +202,9 @@ Change the image to `ghcr.io/getsettalk/tijori:latest-ffmpeg`, redeploy, then tu
 
 ## Backups and moving to another server
 
+- **Download a backup to your computer (easiest):** in the Tijori admin panel open
+  **Backup → Download backup**. To bring it back, here or on a new server, use
+  **Backup → Restore from a backup file**. No extra server or S3 account needed.
 - **Scheduled backups:** add `TIJORI_BACKUP_TO` (for example `s3://my-backups?endpoint=https://...`),
   `TIJORI_BACKUP_SCHEDULE=daily 03:00`, and for S3 destinations `TIJORI_BACKUP_ACCESS_KEY` and
   `TIJORI_BACKUP_SECRET_KEY`. Restart.
