@@ -4,10 +4,11 @@
 # tags: s3, object, storage, files, images, backup
 # port: 9000
 #
-# Tijori for Coolify (written for v4.4). In Coolify:
-#   + New -> Docker Compose Empty -> paste this file -> Save
-#   -> check the domain of "tijori" -> Deploy.
-# Coolify's proxy provides HTTPS. Do not add a `ports:` section.
+# Tijori for Coolify (tested on v4.5.3). In Coolify:
+#   + New Resource -> Docker Compose -> paste this file -> Create Service -> Deploy.
+# The admin password is under General -> Service configuration.
+# Coolify's proxy routes the domain to port 9000. Do not add a `ports:` section.
+# Step-by-step guide with screenshots: https://getsettalk.github.io/Tijori/coolify/
 services:
   tijori:
     image: ghcr.io/getsettalk/tijori:latest

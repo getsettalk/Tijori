@@ -30,6 +30,7 @@ nav:
       - Docker and Compose: docker.md
       - Coolify: coolify.md
       - HTTPS with Caddy or Nginx: https.md
+      - Build the binary yourself: build-from-source.md
   - Connect your app:
       - Laravel: laravel.md
       - Node.js: nodejs.md

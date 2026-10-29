@@ -75,6 +75,17 @@ To get errors as JSON instead of XML (easier to read in an app), send
 `fetch(url, { method: "PUT", body: blob, headers: { Accept: "application/json" } })`.
 A failed upload then returns `{"error": {"code": "...", "message": "..."}}`.
 
+!!! note "Uploading from a web page (not a native app)"
+    Browsers only allow a page's JavaScript to talk to another domain when that domain says so
+    (CORS). Tell Tijori which sites may upload:
+
+    ```toml
+    cors_origins = ["https://app.example.com"]
+    ```
+
+    or `TIJORI_CORS_ORIGINS=https://app.example.com` in Docker/Coolify. Native Flutter and React
+    Native apps do not need this.
+
 If you sign a `ContentType` into the URL, the app must send exactly the same
 `Content-Type` header. If you do not, leave the header out.
 

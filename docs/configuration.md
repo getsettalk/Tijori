@@ -24,6 +24,7 @@ Sizes accept `KB`, `MB`, `GB`, `TB` (powers of 1024). `0` or empty means "no lim
 | `log_format` | `"text"` | `text` or `json`. |
 | `log_level` | `"info"` | `debug`, `info`, `warn`, `error`. |
 | `metrics` | `false` | Serve Prometheus metrics at `/metrics`. |
+| `cors_origins` | `[]` | Web origins whose JavaScript may call Tijori (presigned uploads from a browser), e.g. `["https://app.example.com"]`. `["*"]` allows any site. Empty = off. Env: `TIJORI_CORS_ORIGINS=https://a.com,https://b.com`. |
 | `error_format` | `"auto"` | Format of error responses. `auto`: XML, but JSON when the request sends `Accept: application/json`. `xml`: always XML. `json`: always JSON (see below). |
 | `access_key`, `secret_key` | | A root key with full access. Usually set as `TIJORI_ACCESS_KEY` / `TIJORI_SECRET_KEY`. |
 

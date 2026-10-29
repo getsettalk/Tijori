@@ -25,6 +25,28 @@
 - Secrets and query strings (which hold presigned signatures) are never logged.
 - Public buckets allow anonymous downloads only, never uploads, deletes or listing.
 - The Docker images run as a non-root user; the systemd unit uses a dedicated user and sandboxing.
+- Behind a reverse proxy (Caddy, Nginx, Coolify) the real client address is taken from the
+  right-most `X-Forwarded-For` entry, and only when the direct peer is a private or loopback
+  address. Clients cannot fake it, and one attacker's failed logins do not lock out everyone else.
+- CORS is off unless you list origins in `cors_origins`. Allowing an origin never grants access by
+  itself: requests still need a valid signature (or a public bucket).
+- On Windows, keys that would map to device names (`CON`, `NUL`, `COM1`…) or alternate data streams
+  (`a:b`) are refused.
+- Releases are built with the latest patched Go, and every change is checked with `govulncheck`
+  (known vulnerabilities), `staticcheck`, the race detector, a fuzz test for key paths, and tests on
+  Linux, macOS and Windows. Each release is installed and exercised on five platforms before you
+  see it.
+
+## Things to know
+
+- **Plain HTTP is for testing.** Coolify's free `sslip.io` address and `http://localhost` send
+  keys and files unencrypted. Use your own domain with HTTPS for real data.
+- **`/metrics`** (off by default) shows bucket names and sizes to anyone who can reach it. Keep it
+  on a private network or behind your proxy's authentication.
+- **Case-insensitive disks.** macOS and Windows treat `Photo.jpg` and `photo.jpg` as the same file,
+  S3 does not. Run production on Linux (case-sensitive) if your keys differ only by case.
+- **Rotate secrets you have shared.** If an admin password or a secret key appeared in a
+  screenshot, a chat or a log, change it: `tijori admin password`, and revoke/recreate keys.
 
 ## Reporting a problem
 

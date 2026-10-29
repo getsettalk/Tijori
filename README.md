@@ -127,9 +127,20 @@ Download `tijori_<version>_windows_amd64.zip` from [Releases](https://github.com
 ```sh
 git clone https://github.com/getsettalk/Tijori.git
 cd Tijori
-go build -o tijori ./cmd/tijori
+CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o tijori ./cmd/tijori
 ./tijori version
 ```
+
+Cross-compiling for other systems, Docker images and verifying builds:
+[docs/build-from-source.md](docs/build-from-source.md).
+</details>
+
+<details>
+<summary><b>☁️ Coolify</b> (recorded walkthrough)</summary>
+
+<p><img src="docs/images/coolify/coolify-walkthrough.gif" alt="Deploying Tijori on Coolify in 12 steps" width="100%"></p>
+
+Step-by-step guide with screenshots: [docs/coolify.md](docs/coolify.md).
 </details>
 
 ## 🔌 Connect your app
@@ -249,7 +260,8 @@ final r = await http.post(Uri.parse('https://api.example.com/upload-url'));
 await http.put(Uri.parse(jsonDecode(r.body)['url']), body: await file.readAsBytes());
 ```
 
-Full guide with backend code: [docs/mobile.md](docs/mobile.md).
+Full guide with backend code: [docs/mobile.md](docs/mobile.md). Uploading from a **web page**?
+Allow its address with `cors_origins = ["https://app.example.com"]` (CORS).
 </details>
 
 ## 🖼️ Image resizing
@@ -356,6 +368,7 @@ those, look at [Garage](https://garagehq.deuxfleurs.fr/) or [SeaweedFS](https://
 | [Quick Start](docs/quick-start.md) | [Node.js](docs/nodejs.md) | [Video](docs/video.md) | [CLI](docs/cli.md) |
 | [VPS install](docs/install-vps.md) | [Mobile apps](docs/mobile.md) | [Admin panel](docs/admin-panel.md) | [Troubleshooting](docs/troubleshooting.md) |
 | [Docker](docs/docker.md) · [Coolify](docs/coolify.md) | | [Quotas](docs/quotas.md) | [Security](docs/security.md) |
+| [Build it yourself](docs/build-from-source.md) | | | |
 | [HTTPS](docs/https.md) | | [Backups](docs/backup.md) | |
 
 ## 🤝 Contributing

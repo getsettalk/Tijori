@@ -66,6 +66,16 @@ sudo tijori admin password
 Tijori creates missing metadata when a file is first read. Run
 `tijori usage --recalc` to update the counters.
 
+## Browser says "blocked by CORS policy"
+
+Your web page uploads or downloads from another domain. Allow it:
+`cors_origins = ["https://app.example.com"]` (or `TIJORI_CORS_ORIGINS`), then restart.
+
+## `ERR_BLOCKED_BY_CLIENT` when opening the admin panel
+
+An ad blocker blocked the address (common with `*.sslip.io` test domains). Allow it in the
+extension or use your own domain.
+
 ## Can errors come back as JSON instead of XML?
 
 Yes. Send `Accept: application/json` with the request, or set

@@ -6,6 +6,28 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-29
+
+### Security
+- Release binaries are now built with the latest patched Go (`toolchain go1.27.3`). v1.0.0 was
+  built with Go 1.26.0, which has known vulnerabilities in `net/http`, `net/textproto`,
+  `crypto/tls` and `crypto/x509`. **Upgrade from 1.0.0.**
+- Admin login rate limiting uses the real client address behind reverse proxies (Coolify, Nginx,
+  Caddy), so one client's failed logins no longer lock everyone out; its memory use is bounded.
+- On Windows, keys that map to device names or alternate data streams are refused.
+
+### Added
+- `cors_origins` for browser uploads with presigned URLs.
+- Coolify guide with real screenshots and a recorded walkthrough; "Build the binary yourself" guide.
+- CI runs tests on Linux, macOS and Windows plus `govulncheck`; every release is installed and
+  tested on Linux (amd64, arm64), macOS (Intel, Apple Silicon) and Windows, and both Docker images
+  on amd64 and arm64.
+
+### Fixed
+- Admin: the new-key dialog opens at the top; the Laravel `.env` snippet uses a real bucket name.
+- `sftp://` backups work on Windows (no SSH connection sharing there).
+- Docker images report the version without a leading `v`.
+
 ## [1.0.0] - 2026-10-29
 
 First release.

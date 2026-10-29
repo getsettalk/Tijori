@@ -1,39 +1,50 @@
 # Coolify
 
-**You will:** run Tijori on [Coolify](https://coolify.io) at your own domain, with HTTPS, in about 10 minutes.
+**You will:** run Tijori on [Coolify](https://coolify.io) in about 10 minutes, open its admin
+panel, create a bucket and a key, and upload files.
 
-!!! info "Coolify version"
-    Written for **Coolify v4.4**, the current stable line (October 2026). Coolify v5 is not
-    released yet. Button names may differ slightly in other versions.
+!!! info "Tested version"
+    This guide was recorded on **Coolify v4.5.3** with **Tijori v1.0.1**. Screenshots are real; the
+    server IP and account name are hidden and shown as **`YOUR-SERVER-IP`** with a dashed yellow box.
+
+## Watch it first (36 seconds)
+
+![Deploying Tijori on Coolify, step by step](images/coolify/coolify-walkthrough.gif)
+
+<small>Prefer video? [Download the MP4](images/coolify/coolify-walkthrough.mp4).</small>
 
 ## How it fits together
 
-![Apps reach your domain over HTTPS; Coolify's proxy forwards to the Tijori container on port 9000, which stores files in a volume](images/coolify/architecture.svg)
+![Apps reach your domain; Coolify's proxy forwards to the Tijori container on port 9000, which stores files in a volume](images/coolify/architecture.svg)
 
-- Your apps and users only ever use **your domain**, for example `https://files.example.com`.
-- Coolify's proxy gets the HTTPS certificate and forwards traffic to Tijori's port `9000`.
-- Your files live in the Docker volume **`tijori-data`**, so they survive redeploys and upgrades.
+- Your apps and users only use **your domain**.
+- Coolify's proxy forwards traffic to Tijori's port `9000` (and gets an HTTPS certificate when
+  you use your own domain).
+- Files live in the Docker volume **`tijori-data`**. They survive restarts, redeploys and upgrades.
 
 ## Before you start
 
-- A server with Coolify installed, and a project to put Tijori in.
-- A domain or subdomain (for example `files.example.com`) with a DNS **A record** pointing to
-  your Coolify server's IP address. Without your own domain, Coolify can generate one if a
-  wildcard domain is set in the server settings.
+- A server with Coolify installed.
+- Nothing else. Coolify gives Tijori a free test address like
+  `http://tijori-….YOUR-SERVER-IP.sslip.io`. For real use, add your own domain later (step 9) to get HTTPS.
 
-## The six steps
+## 1. Create a project
 
-![1 + New, Docker Compose Empty. 2 Paste the file, Save. 3 Domains. 4 Environment Variables. 5 Deploy. 6 Open /health](images/coolify/steps.svg)
+**Projects → + New Project**, name it `Tijori`, then **Create Project**. Coolify creates a
+`production` environment for it.
 
-### 1. Create the resource
+![New Project dialog](images/coolify/real/01-new-project.jpg)
 
-Open your project and environment, click **+ New**, and choose **Docker Compose Empty**.
-If Coolify asks, choose the server to run it on.
+## 2. Add a Docker Compose resource
 
-### 2. Paste the Compose file
+In the environment click **+ New Resource**. Type `compose` in the search box and click
+**Deploy** on **Docker Compose** ("without a Git repository").
 
-Copy everything below into the **Docker Compose file** box and click **Save**.
-(It is also in the repository as [deploy/coolify/docker-compose.yml](https://github.com/getsettalk/Tijori/blob/main/deploy/coolify/docker-compose.yml).)
+![Choose a resource: Docker Compose](images/coolify/real/03-choose-docker-compose.jpg)
+
+## 3. Paste the Compose file and create the service
+
+Paste this into **Docker Compose file**, then click **Create Service**:
 
 ```yaml
 services:
@@ -58,55 +69,104 @@ volumes:
   tijori-data:
 ```
 
-What the special lines do:
+![The Compose file pasted into Coolify](images/coolify/real/04-compose-file.jpg)
 
-| Line | Meaning |
+The same file with comments is in the repository:
+[deploy/coolify/docker-compose.yml](https://github.com/getsettalk/Tijori/blob/main/deploy/coolify/docker-compose.yml).
+
+| Line | What Coolify does with it |
 | --- | --- |
-| `SERVICE_URL_TIJORI_9000` | Coolify gives the `tijori` service a domain and sends its traffic to port `9000`. |
-| `${SERVICE_URL_TIJORI}` | Coolify fills in the full address, like `https://files.example.com`. |
-| `${SERVICE_PASSWORD_ADMIN}` | Coolify generates a strong admin password once and keeps it. |
-| `${TIJORI_ACCESS_KEY:-}` | An optional variable you can fill in later. |
+| `SERVICE_URL_TIJORI_9000` | Gives the `tijori` service a domain and sends its traffic to port `9000`. |
+| `${SERVICE_URL_TIJORI}` | Fills in the full address, used for links in the admin panel. |
+| `${SERVICE_PASSWORD_ADMIN}` | Generates a strong admin password once and keeps it. |
+| `${TIJORI_ACCESS_KEY:-}` | An optional, empty variable you can fill in later. |
 
-There is no `ports:` section on purpose. Coolify's proxy handles traffic, and publishing a
-port would bypass HTTPS.
+There is no `ports:` section on purpose: Coolify's proxy handles traffic.
 
-### 3. Set the domain
+## 4. Find your admin password
 
-Open **Domains** (or the service's settings) and make sure the `tijori` service has your domain
-**with `:9000` at the end**:
+The service opens on **General**. Under **Service configuration**, **Admin · Password** is the
+password for the user **`admin`**. Use the copy button.
 
-![The domain field: https://files.example.com is what people use; :9000 is Tijori's port inside the container](images/coolify/domain.svg)
+![General page with the generated admin password](images/coolify/real/05-service-general.jpg)
 
-```text
-https://files.example.com:9000
+## 5. Check the domain
+
+**Domains** shows the address Coolify generated, with **Internal port 9000**. You don't need to
+change anything to try Tijori.
+
+![Domains: generated address and internal port 9000](images/coolify/real/06-domains.jpg)
+
+**Environment Variables** shows what Coolify created from the file (values are hidden):
+
+![Environment variables created from the compose file](images/coolify/real/07-environment-variables.jpg)
+
+## 6. Deploy
+
+Click **Deploy** (top right). Coolify pulls the image, creates the `tijori-data` volume and starts
+the container. The status turns **Running (healthy)** a few seconds later.
+
+![Deploy log: image pulled, volume created, container started](images/coolify/real/08-deploy-finished.jpg)
+
+**Runtime Logs** should show `Tijori started`, `S3 endpoint ready` and `admin panel ready`:
+
+![Runtime logs](images/coolify/real/09-runtime-logs.jpg)
+
+The warning `public_url uses plain http` is expected with the free test address. It goes away
+when you add your own domain with HTTPS (step 9).
+
+## 7. Open the admin panel
+
+Open your domain with `/_admin/` at the end, for example
+`http://tijori-….YOUR-SERVER-IP.sslip.io/_admin/`, and log in as `admin` with the password from step 4.
+
+![Tijori login](images/coolify/real/11-tijori-login.jpg)
+
+![Tijori dashboard](images/coolify/real/12-tijori-dashboard.jpg)
+
+!!! tip "Page blocked in your browser?"
+    Some ad blockers block `*.sslip.io` addresses (`ERR_BLOCKED_BY_CLIENT`). Allow the address in
+    the extension, or use your own domain.
+
+## 8. Create a bucket and a key, upload files
+
+1. **Buckets → + New bucket**: name `photos`, quota `1GB`, tick **Public** if anyone may download.
+
+    ![New bucket](images/coolify/real/13-tijori-new-bucket.jpg)
+
+2. **Keys → + New key**: name it after your app. Copy the secret now; it is shown only once. The
+   dialog already contains working Laravel `.env` and Node.js settings for your domain.
+
+    ![New key with ready-made settings](images/coolify/real/15-tijori-key-created.jpg)
+
+3. **Files**: drag files onto the page to upload. Images get thumbnails. **Share link** creates a
+   link that expires.
+
+    ![File browser](images/coolify/real/16-tijori-file-browser.jpg)
+
+    ![Share link](images/coolify/real/17-tijori-share-link.jpg)
+
+Check from a terminal:
+
+```sh
+curl http://tijori-….YOUR-SERVER-IP.sslip.io/health
+# {"status":"ok"}
 ```
 
-The `:9000` only tells the proxy which port Tijori listens on. Your apps and browser still use
-`https://files.example.com` without a port.
+## 9. Use your own domain (HTTPS)
 
-### 4. Copy the admin password
+1. Point a DNS **A record** for, say, `files.example.com` to your server's IP.
+2. In Coolify, open **Domains → + Add Domain**: protocol **https**, domain `files.example.com`,
+   port **9000**, then **Save**. You can remove the generated sslip.io domain.
 
-Open **Environment Variables**. You will see `SERVICE_PASSWORD_ADMIN` with a generated value.
-Copy it: it is the password for the user **`admin`**.
+    ![Add domain dialog: https, files.example.com, port 9000](images/coolify/real/10-add-custom-domain.jpg)
 
-Optional: to give your app a ready-made key, set `TIJORI_ACCESS_KEY` (for example
-`tj_MYAPP0000000001`) and `TIJORI_SECRET_KEY` (at least 8 characters; 40 random characters
-is better). Set both, or leave both empty and create keys in the admin panel later.
+3. Click **Restart** (or **Redeploy**). `TIJORI_PUBLIC_URL` now uses your domain, and Coolify gets
+   the HTTPS certificate.
 
-### 5. Deploy
-
-Click **Deploy** and open the deployment logs. After a few seconds you should see
-`Tijori started` and `S3 endpoint ready`, and the service turns **healthy**.
-
-### 6. Check it works
-
-- Open `https://files.example.com/health`. It should show `{"status":"ok"}`.
-- Open `https://files.example.com/_admin/` and log in as `admin` with the password from step 4.
-- Create a bucket, then go to **Keys → New key** to get the settings for your app.
+Your apps use `https://files.example.com` as the endpoint. They never type `:9000`.
 
 ## Connect your app
-
-Use your domain as the endpoint, with path-style URLs turned on:
 
 ```env
 AWS_ENDPOINT=https://files.example.com
@@ -114,44 +174,54 @@ AWS_DEFAULT_REGION=auto
 AWS_USE_PATH_STYLE_ENDPOINT=true
 AWS_ACCESS_KEY_ID=tj_...
 AWS_SECRET_ACCESS_KEY=...
-AWS_BUCKET=my-app
+AWS_BUCKET=photos
 ```
 
-See [Laravel](laravel.md), [Node.js](nodejs.md) and [Mobile apps](mobile.md) for full examples.
-
-## Video processing
-
-Change the image to `ghcr.io/getsettalk/tijori:latest-ffmpeg`, click **Save**, then
-**Redeploy**. Then turn on **Video processing** for a bucket in the admin panel.
+See [Laravel](laravel.md), [Node.js](nodejs.md) and [Mobile apps](mobile.md). Browser apps that
+upload with presigned URLs also need `TIJORI_CORS_ORIGINS=https://your-app.example.com` (add it
+under **Environment Variables**, then restart).
 
 ## Upgrading
 
-Click **Redeploy** to pull the image again. If you prefer controlled upgrades, use a version tag
-such as `ghcr.io/getsettalk/tijori:1.0.0` and change it when you want to upgrade. Your files stay
-in the `tijori-data` volume either way.
+Tijori keeps your files in the `tijori-data` volume, so upgrades are safe:
+
+- With `image: ghcr.io/getsettalk/tijori:latest`, use **Redeploy** to pull the newest image.
+- For controlled upgrades, pin a version such as `ghcr.io/getsettalk/tijori:1.0.1` in
+  **Edit Compose File** and change it when you want.
+
+## Video processing
+
+Change the image to `ghcr.io/getsettalk/tijori:latest-ffmpeg`, redeploy, then turn on
+**Video processing** for a bucket in the Tijori admin panel.
 
 ## Backups and moving to another server
 
-- **Scheduled backups:** add environment variables `TIJORI_BACKUP_TO`
-  (for example `s3://my-backups?endpoint=https://...`), `TIJORI_BACKUP_SCHEDULE=daily 03:00`, and for
-  S3 destinations `TIJORI_BACKUP_ACCESS_KEY` and `TIJORI_BACKUP_SECRET_KEY`. Redeploy.
-- **One-file export:** open the service's **Terminal** in Coolify and run
+- **Scheduled backups:** add `TIJORI_BACKUP_TO` (for example `s3://my-backups?endpoint=https://...`),
+  `TIJORI_BACKUP_SCHEDULE=daily 03:00`, and for S3 destinations `TIJORI_BACKUP_ACCESS_KEY` and
+  `TIJORI_BACKUP_SECRET_KEY`. Restart.
+- **One-file export:** in Coolify's **Terminal** for the service run
   `tijori export --out /data/export.tar.gz`, then copy the file off the server.
-- **Copy the volume:** on the server, `docker volume ls | grep tijori-data` finds the volume and
-  `docker volume inspect <name>` shows its folder. Copy that folder with `rsync -a`.
+- **Move:** deploy Tijori on the new server, copy `export.tar.gz` into its `/data`, run
+  `tijori import --force /data/export.tar.gz` in its terminal, and restart.
 
-To move: deploy Tijori on the new Coolify server, copy `export.tar.gz` into the container's
-`/data` folder, and run `tijori import --force /data/export.tar.gz` in its terminal. Then
-redeploy. See [Backup, restore and moving servers](backup.md).
+See [Backup, restore and moving servers](backup.md).
+
+## Security checklist for Coolify
+
+- Use your own domain with **https** before real use (step 9).
+- To change the admin password, edit `SERVICE_PASSWORD_ADMIN` under **Environment Variables**
+  and restart; Tijori picks up the new password on start.
+- Give every app its own key, limited to its bucket. Revoke test keys.
+- If someone else could see your screen or logs, rotate the admin password and keys.
 
 ## Troubleshooting
 
 | Problem | Fix |
 | --- | --- |
-| "No Available Server" or 502 | The domain is missing `:9000`, or the service is not healthy yet. Check the deployment logs. |
-| Login page says the password is wrong | Use the user `admin` and the current value of `SERVICE_PASSWORD_ADMIN`. |
-| `SignatureDoesNotMatch` from your app | The endpoint must be `https://files.example.com` (no bucket, no `:9000`), with path-style URLs on. |
-| Uploads over 100 MB fail with 413 | If the domain goes through Cloudflare's proxy (orange cloud), its free plan limits uploads to 100 MB. Use multipart uploads (SDKs do this automatically for big files) or turn the proxy off for this domain. |
+| "No Available Server" or 502 | The service is not healthy yet, or the domain's port is not `9000`. Check **Runtime Logs**. |
+| `ERR_BLOCKED_BY_CLIENT` in the browser | An ad blocker blocks `sslip.io`. Allow it, or use your own domain. |
+| Login says the password is wrong | User `admin`, password from **General → Admin · Password**. |
+| `SignatureDoesNotMatch` from your app | Endpoint must be just the domain (no bucket, no `:9000`), path-style on. |
+| Browser upload fails with a CORS error | Set `TIJORI_CORS_ORIGINS` to your web app's address and restart. |
+| Uploads over 100 MB fail with 413 | Cloudflare's proxy (orange cloud) limits uploads to 100 MB on the free plan. Use multipart uploads (SDKs do this automatically) or turn the proxy off for this domain. |
 | Deploy fails with a config error | `TIJORI_ACCESS_KEY` and `TIJORI_SECRET_KEY` must both be set or both be empty. |
-
-More answers: [Troubleshooting and FAQ](troubleshooting.md).
