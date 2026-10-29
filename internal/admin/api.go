@@ -19,6 +19,7 @@ import (
 	"github.com/getsettalk/Tijori/internal/state"
 	"github.com/getsettalk/Tijori/internal/storage"
 	"github.com/getsettalk/Tijori/internal/sysinfo"
+	"github.com/getsettalk/Tijori/internal/updates"
 	"github.com/getsettalk/Tijori/internal/version"
 )
 
@@ -65,7 +66,24 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteStrictMode, MaxAge: int(sessionTTL.Seconds()),
 	})
 	h.Log.Info("admin login", "user", u.Username, "remote", ip)
-	writeJSON(w, 200, map[string]any{"user": se.user, "role": se.role, "csrf": se.csrf})
+	writeJSON(w, 200, h.me(ctxSession{id: id, session: se}))
+}
+
+// me describes the logged-in user and this server's version. The version is
+// only shown after login, so anonymous visitors cannot see which release
+// the server runs.
+func (h *Handler) me(se ctxSession) map[string]any {
+	return map[string]any{
+		"user": se.user, "role": se.role, "csrf": se.csrf,
+		"build": version.Info(), "update": h.updateStatus(),
+	}
+}
+
+func (h *Handler) updateStatus() updates.Status {
+	if h.Updates == nil {
+		return updates.Status{Current: version.Version}
+	}
+	return h.Updates()
 }
 
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request, se ctxSession) {
@@ -153,6 +171,8 @@ func (h *Handler) overview(w http.ResponseWriter, r *http.Request) {
 	}
 	out := map[string]any{
 		"version":     version.Version,
+		"build":       version.Info(),
+		"update":      h.updateStatus(),
 		"uptime":      int64(time.Since(h.Started).Seconds()),
 		"endpoint":    h.endpoint(r),
 		"region":      h.Cfg.Region,

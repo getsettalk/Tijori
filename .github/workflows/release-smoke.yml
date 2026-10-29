@@ -100,5 +100,7 @@ jobs:
           for i in $(seq 1 40); do [ "$(docker inspect -f '{{.State.Health.Status}}' t1)" = healthy ] && break; sleep 2; done
           docker inspect -f '{{.State.Health.Status}}' t1 | grep -q healthy
           curl -sf localhost:9000/health
-          docker exec t1 tijori version | grep -q "${TIJORI_VERSION#v}"
+          docker exec t1 tijori version | tee version.txt | grep -q "${TIJORI_VERSION#v}"
+          # The admin panel shows commit and build date; both must be set.
+          if grep -Eq "commit none|built unknown" version.txt; then echo "missing build info"; exit 1; fi
           docker exec t1 id

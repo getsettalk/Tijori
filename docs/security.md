@@ -50,6 +50,11 @@
 
 - **Plain HTTP is for testing.** Coolify's free `sslip.io` address and `http://localhost` send
   keys and files unencrypted. Use your own domain with HTTPS for real data.
+- **Outgoing requests.** Tijori makes only the ones you configure (backups, video webhooks), plus
+  one anonymous `GET` to the GitHub API every 12 hours to tell the admin panel about new releases.
+  It sends no information about your server or files. Turn it off with `check_updates = false`.
+- **The version is only shown after login.** `/health` and the login page don't reveal which
+  release runs, so visitors can't look up its known issues.
 - **`/metrics`** (off by default) shows bucket names and sizes to anyone who can reach it. Keep it
   on a private network or behind your proxy's authentication.
 - **Case-insensitive disks.** macOS and Windows treat `Photo.jpg` and `photo.jpg` as the same file,

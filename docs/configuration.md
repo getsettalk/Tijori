@@ -26,6 +26,7 @@ Sizes accept `KB`, `MB`, `GB`, `TB` (powers of 1024). `0` or empty means "no lim
 | `metrics` | `false` | Serve Prometheus metrics at `/metrics`. |
 | `cors_origins` | `[]` | Web origins whose JavaScript may call Tijori (presigned uploads from a browser), e.g. `["https://app.example.com"]`. `["*"]` allows any site. Empty = off. Env: `TIJORI_CORS_ORIGINS=https://a.com,https://b.com`. |
 | `trust_proxy_headers` | `true` | Behind a reverse proxy, take the real client address from `X-Forwarded-For` (only when the direct peer is a private or loopback address). Set `false` if Tijori is reached directly by clients on a private network. |
+| `check_updates` | `true` | Show "Update available" in the admin panel when a newer release is out. The server sends one anonymous request to the GitHub API every 12 hours; no data about your server is sent. Set `false` on servers without internet access or if you prefer no outgoing requests. Env: `TIJORI_CHECK_UPDATES=false`. |
 | `error_format` | `"auto"` | Format of error responses. `auto`: XML, but JSON when the request sends `Accept: application/json`. `xml`: always XML. `json`: always JSON (see below). |
 | `access_key`, `secret_key` | | A root key with full access. Usually set as `TIJORI_ACCESS_KEY` / `TIJORI_SECRET_KEY`. |
 

@@ -3,6 +3,8 @@ package admin
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io/fs"
 	"log/slog"
@@ -11,6 +13,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/getsettalk/Tijori/internal/config"
@@ -20,6 +23,7 @@ import (
 	"github.com/getsettalk/Tijori/internal/s3api"
 	"github.com/getsettalk/Tijori/internal/state"
 	"github.com/getsettalk/Tijori/internal/storage"
+	"github.com/getsettalk/Tijori/internal/updates"
 	"github.com/getsettalk/Tijori/web"
 )
 
@@ -49,6 +53,7 @@ type Handler struct {
 	RunBackup     func() error
 	BackupRunning func() bool
 	ImageStats    func() (entries int, bytes, hits, misses int64)
+	Updates       func() updates.Status // nil when the update check is off
 
 	sessions sessions
 	limiter  limiter
@@ -90,6 +95,8 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b = bytes.ReplaceAll(b, []byte("{{BASE}}"), []byte(h.base()))
+	b = bytes.ReplaceAll(b, []byte("{{CSS_HASH}}"), []byte(assetHash("app.css")))
+	b = bytes.ReplaceAll(b, []byte("{{JS_HASH}}"), []byte(assetHash("app.js")))
 	securityHeaders(w)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -109,8 +116,29 @@ func (h *Handler) static(w http.ResponseWriter, r *http.Request, name string) {
 		ct = "application/octet-stream"
 	}
 	w.Header().Set("Content-Type", ct)
-	w.Header().Set("Cache-Control", "public, max-age=300")
+	if v := r.URL.Query().Get("v"); v != "" && v == assetHash(name) {
+		// The page links app.js and app.css with a hash of their content, so
+		// an upgraded server is picked up at once and old copies never mix
+		// with a new API.
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "public, max-age=300")
+	}
 	_, _ = w.Write(b)
+}
+
+var assetHashes sync.Map
+
+// assetHash returns a short hash of an embedded admin file.
+func assetHash(name string) string {
+	if v, ok := assetHashes.Load(name); ok {
+		return v.(string)
+	}
+	b, _ := fs.ReadFile(web.Admin, "admin/"+name)
+	sum := sha256.Sum256(b)
+	v := hex.EncodeToString(sum[:6])
+	assetHashes.Store(name, v)
+	return v
 }
 
 // ---- JSON helpers -------------------------------------------------------
@@ -193,7 +221,7 @@ func (h *Handler) api(w http.ResponseWriter, r *http.Request, p string) {
 	case route == "POST /logout":
 		h.logout(w, r, se)
 	case route == "GET /me":
-		writeJSON(w, 200, map[string]any{"user": se.user, "role": se.role, "csrf": se.csrf})
+		writeJSON(w, 200, h.me(se))
 	case route == "GET /overview":
 		h.overview(w, r)
 	case route == "GET /buckets":

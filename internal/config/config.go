@@ -40,6 +40,9 @@ type Config struct {
 	// TrustProxyHeaders uses X-Forwarded-For from private/loopback peers to
 	// find the real client address (rate limits, logs). Default true.
 	TrustProxyHeaders bool `toml:"trust_proxy_headers"`
+	// CheckUpdates lets the admin panel show when a newer Tijori release is
+	// out (one anonymous request to the GitHub API every 12 hours).
+	CheckUpdates bool `toml:"check_updates"`
 
 	// AccessKey and SecretKey define an optional root key with full access.
 	// Normally set through TIJORI_ACCESS_KEY / TIJORI_SECRET_KEY (Docker).
@@ -110,6 +113,7 @@ func Defaults() *Config {
 		LogLevel:          "info",
 		ErrorFormat:       "auto",
 		TrustProxyHeaders: true,
+		CheckUpdates:      true,
 		Admin:             AdminConfig{Enabled: true, Path: "/_admin"},
 		Buckets:           map[string]BucketConfig{},
 		Images: ImagesConfig{

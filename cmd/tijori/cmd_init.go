@@ -33,6 +33,7 @@ data_dir = %q
 # metrics         = false     # expose /metrics for Prometheus
 # error_format    = "auto"    # "auto": XML, or JSON for clients sending Accept: application/json
 #                             # "xml": always XML. "json": always JSON (S3 SDKs may not understand it)
+# check_updates   = true      # admin panel shows when a newer release is out (asks GitHub every 12h)
 
 [admin]
 enabled = true

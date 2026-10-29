@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -65,7 +66,21 @@ func TestAdminPanel(t *testing.T) {
 	if err != nil || resp.StatusCode != 200 || !strings.Contains(resp.Header.Get("Content-Security-Policy"), "script-src 'self'") {
 		t.Fatalf("index: %v %d", err, resp.StatusCode)
 	}
+	page, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
+	// Scripts and styles are linked with a content hash, so browsers load
+	// the new panel right after an upgrade.
+	m := regexp.MustCompile(`app\.js\?v=([0-9a-f]{12})"`).FindSubmatch(page)
+	if m == nil || !regexp.MustCompile(`app\.css\?v=[0-9a-f]{12}"`).Match(page) {
+		t.Fatalf("index without asset hashes:\n%s", page)
+	}
+	for q, want := range map[string]string{"?v=" + string(m[1]): "immutable", "?v=old": "max-age=300", "": "max-age=300"} {
+		r, err := http.Get(e.url + "/_admin/app.js" + q)
+		if err != nil || r.StatusCode != 200 || !strings.Contains(r.Header.Get("Cache-Control"), want) {
+			t.Fatalf("app.js%s: %v cache-control %q", q, err, r.Header.Get("Cache-Control"))
+		}
+		r.Body.Close()
+	}
 
 	if st, _ := a.do("GET", "/overview", nil, false); st != 401 {
 		t.Fatalf("unauthenticated overview: %d", st)
@@ -78,6 +93,18 @@ func TestAdminPanel(t *testing.T) {
 	}
 	if st, out := a.do("GET", "/overview", nil, false); st != 200 || out["version"] == nil {
 		t.Fatalf("overview: %d %v", st, out)
+	}
+	// The panel shows which build runs. Test binaries are "dev" builds, which
+	// never contact GitHub.
+	if st, out := a.do("GET", "/me", nil, false); st != 200 {
+		t.Fatalf("me: %d", st)
+	} else if b, _ := out["build"].(map[string]any); b["version"] == nil || b["commit"] == nil || b["platform"] == nil {
+		t.Fatalf("me without build info: %v", out)
+	} else if u, _ := out["update"].(map[string]any); u["enabled"] != false || u["available"] != false {
+		t.Fatalf("dev build checked for updates: %v", out["update"])
+	}
+	if e.srv.Updates != nil {
+		t.Fatal("update checker started for a dev build")
 	}
 
 	// Mutations need the CSRF token.

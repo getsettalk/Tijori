@@ -27,6 +27,7 @@ import (
 	"github.com/getsettalk/Tijori/internal/s3api"
 	"github.com/getsettalk/Tijori/internal/state"
 	"github.com/getsettalk/Tijori/internal/storage"
+	"github.com/getsettalk/Tijori/internal/updates"
 	"github.com/getsettalk/Tijori/internal/version"
 	"github.com/getsettalk/Tijori/internal/video"
 )
@@ -47,6 +48,7 @@ type Server struct {
 	AdminPanel *admin.Handler
 	Backups    *backup.Runner
 	Video      *video.Manager
+	Updates    *updates.Checker
 
 	started  time.Time
 	bg       sync.WaitGroup

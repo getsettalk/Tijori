@@ -4,7 +4,7 @@
 
 const BASE = document.currentScript.dataset.base;
 const API = BASE + "/api";
-const state = { csrf: "", user: "", role: "", buckets: [] };
+const state = { csrf: "", user: "", role: "", buckets: [], build: {}, update: {} };
 
 // ---- i18n -------------------------------------------------------------------
 
@@ -32,6 +32,11 @@ const STRINGS = {
     theme: "Theme", auto: "Auto", light: "Light", dark: "Dark", config: "Effective configuration",
     readonly: "read-only", available: "available", notFound: "not installed", ok: "OK", failed: "failed",
     perm_readwrite: "Read and write", perm_read: "Read only", perm_write: "Write only",
+    about: "About this server", commit: "Commit", built: "Built", platform: "Platform", updates: "Updates",
+    upToDate: "Up to date", updateAvailable: "Update available", devBuild: "Development build",
+    updateOff: "Update check is off", notChecked: "Not checked yet", lastChecked: "Last checked",
+    releaseNotes: "Release notes", newRelease: "Tijori {latest} is available. This server runs {current}.",
+    upgradeHint: "Docker or Coolify: redeploy to pull the new image. Binary: run the install command again or download the new release. Your files are kept.",
   },
 };
 
@@ -60,6 +65,29 @@ const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 function esc(v) {
   return String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
+// "1.0.1" -> "v1.0.1"; "dev" stays "dev".
+const vtag = (v) => (/^\d/.test(v || "") ? "v" + v : String(v || ""));
+
+function updateBadge(u, b) {
+  if (!b.version || b.version === "dev") return `<span class="badge">${t("devBuild")}</span>`;
+  if (u.available) {
+    return `<a class="badge warn" href="${esc(u.url)}" target="_blank" rel="noopener noreferrer">${t("updateAvailable")}: ${esc(vtag(u.latest))}</a>`;
+  }
+  return u.latest ? `<span class="badge ok">${t("upToDate")}</span>` : "";
+}
+
+// Sidebar (desktop) and top bar (phone) version line.
+function renderVersion() {
+  const b = state.build || {}, u = state.update || {};
+  $$("[data-version]").forEach((el) => {
+    el.innerHTML = `<span class="muted" title="${esc(vtag(b.version))}">Tijori ${esc(vtag(b.version))}</span>${el.dataset.version === "full" ? " " + updateBadge(u, b) : ""}`;
+  });
+}
+
+function setMe(me) {
+  Object.assign(state, { csrf: me.csrf, user: me.user, role: me.role, build: me.build || {}, update: me.update || {} });
+}
+
 function bytes(n) {
   if (n == null || n < 0) return "–";
   const u = ["B", "KB", "MB", "GB", "TB", "PB"];
@@ -70,6 +98,11 @@ function bytes(n) {
 function duration(sec) {
   const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
+}
+// Build dates come from the binary; "unknown" when it was built without one.
+function stamp(iso) {
+  const d = new Date(iso);
+  return isNaN(d) ? "unknown" : d.toLocaleString();
 }
 function when(iso) {
   if (!iso) return t("never");
@@ -191,14 +224,15 @@ function layout() {
   $("#app").innerHTML = `<div class="shell">
     <aside class="side"><a class="brand" href="#/"><img src="${BASE}/logo.svg" alt="">Tijori</a>
       <nav class="nav">${nav}</nav>
-      <div class="side-foot"><span class="muted">${esc(state.user)}${state.role === "readonly" ? " · " + t("readonly") : ""}</span>
+      <div class="side-foot"><div class="ver" data-version="full"></div><span class="muted">${esc(state.user)}${state.role === "readonly" ? " · " + t("readonly") : ""}</span>
         <button class="btn small" id="logout">${t("logout")}</button></div></aside>
     <div><header class="topbar"><a class="brand" href="#/"><img src="${BASE}/logo.svg" alt="" width="28" height="28">Tijori</a>
-      <button class="btn small" id="logout2">${t("logout")}</button></header>
+      <span class="ver small" data-version="short"></span><button class="btn small" id="logout2">${t("logout")}</button></header>
       <main class="main" id="main"></main></div></div>`;
   const out = async () => { try { await api("POST", "/logout"); } catch (e) { /* ignore */ } showLogin(); };
   $("#logout").addEventListener("click", out);
   $("#logout2").addEventListener("click", out);
+  renderVersion();
 }
 
 const VIEWS = {};
@@ -230,7 +264,7 @@ function showLogin() {
     e.preventDefault();
     try {
       const me = await api("POST", "/login", { username: $("#u").value.trim(), password: $("#p").value });
-      Object.assign(state, { csrf: me.csrf, user: me.user, role: me.role });
+      setMe(me);
       layout();
       route();
     } catch (ex) {
@@ -243,7 +277,7 @@ function showLogin() {
 async function boot() {
   try {
     const me = await api("GET", "/me");
-    Object.assign(state, { csrf: me.csrf, user: me.user, role: me.role });
+    setMe(me);
     layout();
     route();
   } catch (e) {
@@ -271,7 +305,13 @@ VIEWS.dashboard = async (main) => {
   const v = o.video || {};
   const ic = o.image_cache;
   const lb = o.last_backup;
+  const b = o.build || {}, u = o.update || {};
+  Object.assign(state, { build: b, update: u });
+  renderVersion();
   main.innerHTML = `<h1>${t("dashboard")}</h1>
+    ${u.available ? `<div class="notice"><strong>${esc(t("newRelease", { latest: vtag(u.latest), current: vtag(b.version) }))}</strong>
+      <a href="${esc(u.url)}" target="_blank" rel="noopener noreferrer">${t("releaseNotes")}</a>
+      <div class="small">${t("upgradeHint")}</div></div>` : ""}
     <div class="grid stats">
       <div class="card stat"><div class="label">${t("totalUsed")}</div><div class="value">${bytes(o.total)}</div>
         ${o.max_total ? `<div class="bar"><span data-pct="${pct(o.total, o.max_total)}"></span></div><div class="small muted">${t("quota")}: ${bytes(o.max_total)}</div>` : ""}</div>
@@ -284,7 +324,8 @@ VIEWS.dashboard = async (main) => {
       <div class="card"><h2>${t("server")}</h2><dl class="kv">
         <dt>${t("endpoint")}</dt><dd><code>${esc(o.endpoint)}</code> <button class="btn small" data-copy="${esc(o.endpoint)}">${t("copy")}</button></dd>
         <dt>Region</dt><dd><code>${esc(o.region)}</code></dd>
-        <dt>${t("version")}</dt><dd>${esc(o.version)}</dd>
+        <dt>${t("version")}</dt><dd><strong>${esc(vtag(b.version))}</strong> ${updateBadge(u, b)}
+          <div class="small muted">${t("commit")} <code>${esc(b.commit)}</code> · ${t("built")} ${esc(stamp(b.date))}</div></dd>
         <dt>${t("uptime")}</dt><dd>${duration(o.uptime)}</dd>
         <dt>${t("freeDisk")}</dt><dd>${bytes(o.disk_free)}</dd>
         <dt>${t("video")}</dt><dd>${v.available ? `<span class="badge ok">${t("available")}</span> <span class="small muted">${esc(v.version || "")}</span>${v.queued ? ` · ${v.queued} queued` : ""}` : `<span class="badge">${t("notFound")}</span>`}</dd>
@@ -712,16 +753,29 @@ keep = 7</pre><p class="small">You can also run <code>tijori backup</code> or <c
 // ---- settings ---------------------------------------------------------------
 
 VIEWS.settings = async (main) => {
-  const s = await api("GET", "/settings");
+  const [s, me] = await Promise.all([api("GET", "/settings"), api("GET", "/me")]);
+  setMe(me);
+  renderVersion();
+  const b = state.build, u = state.update;
   const theme = store("tijori.theme") || "auto";
-  main.innerHTML = `<h1>${t("settings")}</h1><div class="grid two">
+  main.innerHTML = `<h1>${t("settings")}</h1><div class="grid two"><div class="grid stack">
+    <div class="card"><h2>${t("about")}</h2><dl class="kv">
+      <dt>${t("version")}</dt><dd><strong>${esc(vtag(b.version))}</strong> ${updateBadge(u, b)}</dd>
+      <dt>${t("commit")}</dt><dd><code>${esc(b.commit)}</code></dd>
+      <dt>${t("built")}</dt><dd>${esc(stamp(b.date))}</dd>
+      <dt>Go</dt><dd>${esc(b.go)}</dd>
+      <dt>${t("platform")}</dt><dd>${esc(b.platform)}</dd>
+      <dt>${t("updates")}</dt><dd>${!u.enabled ? t("updateOff")
+        : u.latest ? `${t("lastChecked")} ${esc(when(u.checked_at))} · latest ${esc(vtag(u.latest))}${u.url ? ` · <a href="${esc(u.url)}" target="_blank" rel="noopener noreferrer">${t("releaseNotes")}</a>` : ""}`
+        : t("notChecked")}</dd>
+    </dl></div>
     <div class="card"><h2>${t("theme")}</h2>
       <div class="row"><div class="field"><label>${t("theme")}</label><select id="theme">
         ${["auto", "light", "dark"].map((v) => `<option value="${v}" ${v === theme ? "selected" : ""}>${t(v)}</option>`).join("")}</select></div></div>
       <h2>${t("changePassword")}</h2><form id="pw" novalidate><div class="error-box hidden"></div>
         <div class="field"><label>${t("currentPassword")}</label><input type="password" name="cur" autocomplete="current-password"></div>
         <div class="field"><label>${t("newPassword")}</label><input type="password" name="new" autocomplete="new-password" minlength="8"></div>
-        <button class="btn primary" type="submit">${t("save")}</button></form></div>
+        <button class="btn primary" type="submit">${t("save")}</button></form></div></div>
     <div class="card"><h2>${t("config")}</h2><p class="small muted">${esc(s.file)}</p>
       ${(s.warnings || []).map((w) => `<div class="error-box">${esc(w)}</div>`).join("")}
       <pre class="code">${esc(s.toml)}</pre></div></div>`;

@@ -34,6 +34,11 @@ All notable changes are listed here. The format follows
 - The admin panel uploads big files (8 MB and up) in parts of about 15 seconds each, with retries,
   so uploads work behind proxies that cut long requests (Coolify's Traefik stops at 60 s) and on
   slow connections. Clearer error messages for proxy timeouts.
+- The admin panel shows which build is running (version, commit, build date) on every page, and
+  says **"Update available"** when a newer release is out, with a link to the release notes. The
+  server asks GitHub's API once every 12 hours, anonymously; `check_updates = false` turns it off.
+  Binaries built with plain `go build` from a git checkout now report their version and commit too.
+- After an upgrade, browsers load the new admin panel at once (asset links carry a content hash).
 - Coolify guide with real screenshots and a recorded walkthrough; "Build the binary yourself" guide.
 - CI runs tests on Linux, macOS and Windows plus `govulncheck`; every release is installed and
   tested on Linux (amd64, arm64), macOS (Intel, Apple Silicon) and Windows, and both Docker images

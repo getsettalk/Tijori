@@ -75,6 +75,7 @@ h2 { font-size: 17px; margin: 0 0 12px; }
 .stat .label { color: var(--muted); font-size: 13px; }
 .stat .value { font-size: 24px; font-weight: 700; margin-top: 4px; }
 .two { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.stack { align-content: start; }
 
 .bar { height: 8px; background: var(--surface-2); border-radius: 99px; overflow: hidden; margin-top: 6px; }
 .bar > span { display: block; height: 100%; background: var(--brand-gradient); border-radius: 99px; width: 0; transition: width .4s; }
@@ -92,6 +93,15 @@ h2 { font-size: 17px; margin: 0 0 12px; }
 .badge.public { background: var(--accent-soft); color: var(--accent-ink); border-color: transparent; }
 .badge.ok { color: var(--ok); }
 .badge.bad { color: var(--danger); }
+.badge.warn { color: var(--accent-ink); background: var(--accent-soft); border-color: transparent; font-weight: 600; text-decoration: none; }
+a.badge.warn:hover { text-decoration: underline; }
+.notice { background: var(--accent-soft); color: var(--text); border-left: 4px solid var(--accent); padding: 12px 14px; border-radius: 9px; margin-bottom: 16px; }
+.notice a { margin-left: 6px; font-weight: 600; }
+.notice .small { margin-top: 4px; color: var(--muted); }
+.ver { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ver > span:first-child { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar .ver > span:first-child { max-width: 40vw; }
+.topbar .ver { margin-left: auto; margin-right: 10px; }
 
 /* Buttons and forms */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 8px 14px; border-radius: 9px; font: inherit; font-size: 14px; cursor: pointer; text-decoration: none; white-space: nowrap; }

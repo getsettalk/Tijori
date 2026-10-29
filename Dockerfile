@@ -10,7 +10,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN VERSION="${VERSION#v}" && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
+RUN VERSION="${VERSION#v}" && COMMIT="$(printf '%.7s' "$COMMIT")" && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
       -ldflags "-s -w -X github.com/getsettalk/Tijori/internal/version.Version=${VERSION} -X github.com/getsettalk/Tijori/internal/version.Commit=${COMMIT} -X github.com/getsettalk/Tijori/internal/version.Date=${DATE}" \
       -o /out/tijori ./cmd/tijori \
  && mkdir -p /out/data

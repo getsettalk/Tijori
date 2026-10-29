@@ -39,6 +39,7 @@ max_width = 2000
 	t.Setenv("TIJORI_IMAGES_ALLOWED_WIDTHS", "150, 300")
 	t.Setenv("TIJORI_BUCKETS_MY_VIDEOS_VIDEO_PROCESS", "true")
 	t.Setenv("TIJORI_PUBLIC_BUCKETS", "assets")
+	t.Setenv("TIJORI_CHECK_UPDATES", "false")
 	cfg, err := Load(p)
 	if err != nil {
 		t.Fatal(err)
@@ -54,6 +55,9 @@ max_width = 2000
 	}
 	if !cfg.Buckets["photos"].PublicRead || !cfg.Buckets["my-videos"].VideoProcess || !cfg.Buckets["assets"].PublicRead {
 		t.Errorf("buckets: %+v", cfg.Buckets)
+	}
+	if cfg.CheckUpdates || !Defaults().CheckUpdates {
+		t.Errorf("check_updates: env false gave %v, default should be true", cfg.CheckUpdates)
 	}
 }
 

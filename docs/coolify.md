@@ -183,11 +183,17 @@ under **Environment Variables**, then restart).
 
 ## Upgrading
 
+The admin panel shows the running version at the bottom of the sidebar (top bar on phones) and on
+the **Dashboard** and **Settings** pages, with the commit and build date. When a newer release is
+out it says **Update available: vX.Y.Z** with a link to the release notes.
+
 Tijori keeps your files in the `tijori-data` volume, so upgrades are safe:
 
 - With `image: ghcr.io/getsettalk/tijori:latest`, use **Redeploy** to pull the newest image.
 - For controlled upgrades, pin a version such as `ghcr.io/getsettalk/tijori:1.0.1` in
   **Edit Compose File** and change it when you want.
+- After the redeploy, reload the admin panel: the version at the bottom of the sidebar shows the
+  new number.
 
 ## Video processing
 

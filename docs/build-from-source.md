@@ -61,6 +61,14 @@ targets are tested on real machines for every release; others should work but ar
 
 ## Put a version number in your build
 
+A plain `go build` inside a git checkout already records the version (from the nearest git tag),
+the commit and the commit time, and the admin panel shows them. A build from the `v1.0.1` tag
+reports `1.0.1`; a build from later commits reports something like
+`1.0.2-0.20261029064649-c6f7b04f0a9c`, and `+dirty` / `-dirty` when you have uncommitted changes.
+Check with `./tijori version`.
+
+To set your own label instead (this is how official releases are built):
+
 ```sh
 VERSION=1.0.1-custom
 go build -trimpath -o tijori \

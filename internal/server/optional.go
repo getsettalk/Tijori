@@ -1,16 +1,20 @@
 package server
 
 import (
+	"context"
 	"path/filepath"
 	"time"
 
 	"github.com/getsettalk/Tijori/internal/admin"
 	"github.com/getsettalk/Tijori/internal/backup"
 	"github.com/getsettalk/Tijori/internal/imageproc"
+	"github.com/getsettalk/Tijori/internal/updates"
+	"github.com/getsettalk/Tijori/internal/version"
 	"github.com/getsettalk/Tijori/internal/video"
 )
 
-// initOptional builds optional components (images, admin, video, backup).
+// initOptional builds optional components (images, admin, video, backup,
+// update check).
 func (s *Server) initOptional() error {
 	if s.Cfg.Images.Enabled {
 		ic := s.Cfg.Images
@@ -46,6 +50,12 @@ func (s *Server) initOptional() error {
 		}
 		a.RunBackup = s.Backups.Start
 		a.BackupRunning = s.Backups.Running
+		// Development builds ("dev", including tests) have nothing to
+		// compare, so they never contact GitHub.
+		if s.Cfg.CheckUpdates && version.Version != "dev" {
+			s.Updates = &updates.Checker{Current: version.Version, Log: s.Log}
+			a.Updates = s.Updates.Status
+		}
 		s.AdminPanel = a
 		s.Admin = a
 	}
@@ -61,4 +71,13 @@ func (s *Server) startOptional() {
 		defer s.bg.Done()
 		s.Backups.Schedule(s.stop)
 	}()
+	if s.Updates != nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		s.closers = append(s.closers, cancel)
+		s.bg.Add(1)
+		go func() {
+			defer s.bg.Done()
+			s.Updates.Run(ctx)
+		}()
+	}
 }
