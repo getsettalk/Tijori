@@ -14,6 +14,10 @@ No other server or S3 account needed. Good for small projects and for Coolify.
 2. Your browser saves `tijori-backup-<date>.tar.gz`. Keep it on your computer, an external drive
    or cloud storage you trust.
 
+    On a plain `http://` address (such as Coolify's free `sslip.io` test address) Chrome asks you to
+    confirm the download: click **Keep** in the download list. The file then travels unencrypted,
+    so use your own domain with HTTPS for real data.
+
 To bring it back, on the same or a new server:
 
 1. **Backup → Restore from a backup file → Choose backup file…**, pick the file, type that

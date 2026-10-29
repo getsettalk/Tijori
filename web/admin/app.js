@@ -50,6 +50,7 @@ const STRINGS = {
     st_uploading: "Uploading the backup file\u2026", st_checking: "Checking the whole file before changing anything\u2026",
     st_restoring: "Restoring files\u2026", st_done: "Restore finished", st_failed: "Restore failed",
     automatic: "Automatic backups", notScheduled: "Not scheduled", restore: "Restore",
+    plainHttp: "This address uses plain HTTP, so the file (with every secret key) travels unencrypted and your browser may ask you to confirm the download (\u201cKeep\u201d). Use your own domain with HTTPS for real data.",
   },
 };
 
@@ -195,7 +196,7 @@ function modal(html, { wide = false, onMount } = {}) {
       if (b) done(b.dataset.close === "ok" ? true : null);
     });
     document.body.appendChild(bd);
-    const first = $("input, select, textarea, button.primary", bd);
+    const first = $("input:not([hidden]), select, textarea, button.primary", bd);
     if (first) first.focus({ preventScroll: true });
     bd.firstElementChild.scrollTop = 0;
     if (onMount) onMount(bd.firstElementChild, done);
@@ -752,7 +753,8 @@ VIEWS.backup = async (main) => {
     <div class="card"><h2>${t("fullBackup")}</h2><p class="small">${t("fullBackupHint")}</p>
       <p class="small muted">${bytes(o.total)} · ${o.objects} ${t("objects").toLowerCase()} · ${o.buckets.length} ${t("bucketsCount").toLowerCase()}</p>
       ${ro() ? "" : `<button class="btn primary" id="export">${t("downloadBackup")}</button>`}
-      <p class="small muted">${t("fullBackupWhere")} <code>tijori import</code>.</p></div>
+      <p class="small muted">${t("fullBackupWhere")} <code>tijori import</code>.</p>
+      ${plainHttp() ? `<div class="notice small">${t("plainHttp")}</div>` : ""}</div>
     <div class="card"><h2>${t("restoreFrom")}</h2><p class="small">${t("restoreHint")}</p>
       ${ro() ? `<p class="small muted">${t("restoreReadonly")}</p>` : `
       <label class="check"><input type="checkbox" id="replace" checked> ${t("replaceExisting")}</label>
@@ -796,8 +798,12 @@ keep = 7</pre><p class="small">You can also run <code>tijori backup</code> or <c
   if (job.state === "checking" || job.state === "restoring") watchRestore();
 };
 
+// plainHttp reports an unencrypted address other than this computer.
+const plainHttp = () => location.protocol === "http:" && !["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+
 function passwordModal(intro, submitLabel, submit) {
   return formModal(t("confirmPassword"), `<p class="small">${intro}</p>
+    <input type="text" name="username" autocomplete="username" value="${esc(state.user)}" hidden>
     <div class="field"><label for="confirm-pw">${t("password")}</label><input id="confirm-pw" type="password" name="password" autocomplete="current-password" required></div>`,
     (form) => submit(form.elements.password.value), submitLabel);
 }

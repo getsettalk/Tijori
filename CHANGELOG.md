@@ -6,6 +6,11 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Backup page: on a plain HTTP address, a note explains that the browser may ask to confirm the
+  download and that the file travels unencrypted. The password dialog includes the user name for
+  password managers.
+
 ## [1.0.2] - 2026-10-29
 
 ### Added
