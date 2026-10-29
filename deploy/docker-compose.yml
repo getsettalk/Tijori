@@ -1,0 +1,26 @@
+# Tijori with Docker Compose.
+#   1. Copy this file and create a .env file next to it:
+#        TIJORI_ADMIN_PASSWORD=choose-a-long-password
+#   2. docker compose up -d
+#   3. Open http://localhost:9000/_admin/ and create a bucket and a key.
+services:
+  tijori:
+    image: ghcr.io/getsettalk/tijori:latest
+    # For video processing use: ghcr.io/getsettalk/tijori:latest-ffmpeg
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    environment:
+      TIJORI_ADMIN_PASSWORD: ${TIJORI_ADMIN_PASSWORD:?set TIJORI_ADMIN_PASSWORD in .env}
+      # The address your apps use, e.g. https://files.example.com
+      TIJORI_PUBLIC_URL: ${TIJORI_PUBLIC_URL:-}
+      # Optional: a ready-made key for your app (any long random strings).
+      TIJORI_ACCESS_KEY: ${TIJORI_ACCESS_KEY:-}
+      TIJORI_SECRET_KEY: ${TIJORI_SECRET_KEY:-}
+      # Optional: buckets anyone can read, comma separated.
+      TIJORI_PUBLIC_BUCKETS: ${TIJORI_PUBLIC_BUCKETS:-}
+    volumes:
+      - tijori-data:/data
+
+volumes:
+  tijori-data:

@@ -1,0 +1,26 @@
+name: Bug report
+description: Something does not work as described
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. tijori init\n2. ..."
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `tijori doctor` and `tijori version`
+      render: text
+  - type: input
+    id: client
+    attributes:
+      label: Client or SDK (if relevant)
+      placeholder: Laravel 11 / @aws-sdk/client-s3 3.x / boto3 ...

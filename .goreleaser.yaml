@@ -1,0 +1,57 @@
+# GoReleaser v2: builds release binaries and checksums when a v* tag is pushed.
+# Docker images are built by .github/workflows/release.yml.
+version: 2
+project_name: tijori
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: tijori
+    main: ./cmd/tijori
+    binary: tijori
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/getsettalk/Tijori/internal/version.Version={{ .Version }}
+      - -X github.com/getsettalk/Tijori/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/getsettalk/Tijori/internal/version.Date={{ .Date }}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude: ["^docs:", "^test:", "^chore:"]
+
+release:
+  github:
+    owner: getsettalk
+    name: Tijori
+  footer: |
+    **Install:** `curl -fsSL https://raw.githubusercontent.com/getsettalk/Tijori/main/scripts/install.sh | sh`
+    **Docker:** `docker run -p 9000:9000 -v tijori-data:/data -e TIJORI_ADMIN_PASSWORD=change-me ghcr.io/getsettalk/tijori:{{ .Tag }}`

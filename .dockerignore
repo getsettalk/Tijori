@@ -1,0 +1,7 @@
+.git
+tijori
+dist
+data
+docs/site
+test/compat/node/node_modules
+*.tar.gz

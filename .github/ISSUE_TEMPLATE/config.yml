@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem
+    url: https://github.com/getsettalk/Tijori/security/advisories/new
+    about: Please report security issues privately.
+  - name: Question
+    url: https://github.com/getsettalk/Tijori/discussions
+    about: Ask and answer questions in Discussions.

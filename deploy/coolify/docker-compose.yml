@@ -1,0 +1,23 @@
+# Tijori for Coolify (v4). In Coolify: New Resource -> Docker Compose ->
+# paste this file -> set the domain for "tijori" -> Deploy.
+# Coolify's proxy provides HTTPS. SERVICE_* variables are filled in by Coolify.
+services:
+  tijori:
+    image: ghcr.io/getsettalk/tijori:latest
+    restart: unless-stopped
+    environment:
+      - SERVICE_FQDN_TIJORI_9000
+      - TIJORI_PUBLIC_URL=${SERVICE_FQDN_TIJORI}
+      - TIJORI_ADMIN_PASSWORD=${SERVICE_PASSWORD_ADMIN}
+      - TIJORI_ACCESS_KEY=${TIJORI_ACCESS_KEY:-}
+      - TIJORI_SECRET_KEY=${TIJORI_SECRET_KEY:-}
+    volumes:
+      - tijori-data:/data
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/tijori", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  tijori-data:

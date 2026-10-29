@@ -1,0 +1,74 @@
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install ffmpeg (video tests)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: go vet ./...
+      - uses: dominikh/staticcheck-action@v1
+        with:
+          install-go: false
+      - run: go test -race -count=1 ./...
+      - name: Fuzz key paths briefly
+        run: go test -run='^$' -fuzz=FuzzKeyPaths -fuzztime=20s ./internal/storage
+      - name: Build every release target
+        run: |
+          for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            GOOS=${t%/*} GOARCH=${t#*/} CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /tmp/tijori-${t%/*}-${t#*/} ./cmd/tijori
+          done
+          ls -lh /tmp/tijori-*
+
+  compat-node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Start Tijori
+        run: |
+          go build -o tijori ./cmd/tijori
+          TIJORI_DATA_DIR=$RUNNER_TEMP/data TIJORI_ACCESS_KEY=tj_CITESTKEY000000 TIJORI_SECRET_KEY=ci-secret-ci-secret-ci-secret-ci-secret ./tijori serve &
+          for i in $(seq 1 30); do curl -sf localhost:9000/health && break; sleep 1; done
+      - name: Node SDK smoke test
+        working-directory: test/compat/node
+        run: npm install --no-audit --no-fund && node smoke.mjs
+        env:
+          TIJORI_URL: http://localhost:9000
+          TIJORI_ACCESS_KEY: tj_CITESTKEY000000
+          TIJORI_SECRET_KEY: ci-secret-ci-secret-ci-secret-ci-secret
+      - name: curl --aws-sigv4 smoke test
+        run: sh test/compat/curl.sh
+        env:
+          TIJORI_URL: http://localhost:9000
+          TIJORI_ACCESS_KEY: tj_CITESTKEY000000
+          TIJORI_SECRET_KEY: ci-secret-ci-secret-ci-secret-ci-secret
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image and check its health
+        run: |
+          docker build -t tijori:test .
+          docker run -d --name t -p 9000:9000 -e TIJORI_ADMIN_PASSWORD=ci-password tijori:test
+          for i in $(seq 1 30); do [ "$(docker inspect -f '{{.State.Health.Status}}' t)" = healthy ] && break; sleep 2; done
+          docker inspect -f '{{.State.Health.Status}}' t | grep -q healthy
+          curl -sf localhost:9000/health
+          docker images tijori:test

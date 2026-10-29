@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Tijori">
+  <title>Tijori</title>
+  <!-- One colour (currentColor), transparent background -->
+  <defs>
+    <mask id="tj-mono-cut">
+      <rect width="64" height="64" fill="#FFFFFF"/>
+      <rect x="31.5" y="31.5" width="27.5" height="24" rx="7.5" fill="#000000"/>
+    </mask>
+  </defs>
+  <g fill="currentColor" mask="url(#tj-mono-cut)">
+    <ellipse cx="26" cy="16" rx="12" ry="4.5"/>
+    <path d="M14 19A12 4.5 0 0 0 38 19V26A12 4.5 0 0 1 14 26Z"/>
+    <path d="M14 29A12 4.5 0 0 0 38 29V36A12 4.5 0 0 1 14 36Z"/>
+    <path d="M14 39A12 4.5 0 0 0 38 39V46A12 4.5 0 0 1 14 46Z"/>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round">
+    <path d="M42.79 13.87A7.4 7.4 0 0 1 55.91 13.3"/>
+    <path d="M56.21 20.13A7.4 7.4 0 0 1 43.09 20.7"/>
+  </g>
+  <g fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round">
+    <path d="M57.21 15.56L57.39 10.94L53.12 13.4Z"/>
+    <path d="M41.79 18.44L41.61 23.06L45.88 20.6Z"/>
+  </g>
+  <rect x="35.75" y="35.75" width="19" height="15.5" rx="3.5" fill="none" stroke="currentColor" stroke-width="2.5"/>
+  <path d="M38.5 49L43.4 42.7L46.4 46.4L48.7 44L52.4 49Z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/>
+  <circle cx="49.2" cy="39.8" r="2" fill="currentColor"/>
+</svg>

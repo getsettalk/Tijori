@@ -1,0 +1,7 @@
+# Labels for the repository (sync with a labels action or create by hand).
+- { name: bug, color: d73a4a, description: Something is not working }
+- { name: enhancement, color: 4F46E5, description: New feature or request }
+- { name: good first issue, color: F59E0B, description: Good for newcomers }
+- { name: help wanted, color: 008672, description: Extra attention is needed }
+- { name: docs, color: 0075ca, description: Documentation }
+- { name: compatibility, color: 5319e7, description: Works differently from S3 or an SDK }

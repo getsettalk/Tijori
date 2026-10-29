@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Tijori">
+  <title>Tijori</title>
+  <defs>
+    <linearGradient id="tj-bg" gradientUnits="userSpaceOnUse" x1="4" y1="2" x2="60" y2="62">
+      <stop offset="0" stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#9333EA"/>
+    </linearGradient>
+  </defs>
+  <!-- App tile: indigo to violet -->
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#tj-bg)"/>
+  <!-- Database: lid and three tiers -->
+  <g fill="#FFFFFF">
+    <ellipse cx="26" cy="16" rx="12" ry="4.5"/>
+    <path d="M14 19A12 4.5 0 0 0 38 19V26A12 4.5 0 0 1 14 26Z"/>
+    <path d="M14 29A12 4.5 0 0 0 38 29V36A12 4.5 0 0 1 14 36Z"/>
+    <path d="M14 39A12 4.5 0 0 0 38 39V46A12 4.5 0 0 1 14 46Z"/>
+  </g>
+  <!-- Sync arrows -->
+  <g fill="none" stroke="#FCD34D" stroke-width="2.8" stroke-linecap="round">
+    <path d="M42.79 13.87A7.4 7.4 0 0 1 55.91 13.3"/>
+    <path d="M56.21 20.13A7.4 7.4 0 0 1 43.09 20.7"/>
+  </g>
+  <g fill="#FCD34D" stroke="#FCD34D" stroke-width="1" stroke-linejoin="round">
+    <path d="M57.21 15.56L57.39 10.94L53.12 13.4Z"/>
+    <path d="M41.79 18.44L41.61 23.06L45.88 20.6Z"/>
+  </g>
+  <!-- Image card, cut out of the database by a halo in the tile colour -->
+  <rect x="31.5" y="31.5" width="27.5" height="24" rx="7.5" fill="url(#tj-bg)"/>
+  <rect x="34.5" y="34.5" width="21.5" height="18" rx="4.5" fill="#FFFFFF"/>
+  <path d="M37 50L43.2 42L46.6 46.2L49.2 43.4L53.6 50Z" fill="#6D28D9" stroke="#6D28D9" stroke-width="1.2" stroke-linejoin="round"/>
+  <circle cx="49.4" cy="38.8" r="2.4" fill="#F59E0B"/>
+</svg>

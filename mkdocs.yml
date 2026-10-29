@@ -1,0 +1,48 @@
+site_name: Tijori
+site_description: Tiny self-hosted S3-compatible storage in one binary
+site_url: https://getsettalk.github.io/Tijori/
+repo_url: https://github.com/getsettalk/Tijori
+edit_uri: edit/main/docs/
+theme:
+  name: material
+  logo: images/logo.svg
+  favicon: images/logo.svg
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: amber
+      toggle: { icon: material/weather-night, name: Dark mode }
+    - scheme: slate
+      primary: indigo
+      accent: amber
+      toggle: { icon: material/weather-sunny, name: Light mode }
+  features: [content.code.copy, navigation.sections, navigation.top]
+markdown_extensions:
+  - admonition
+  - pymdownx.superfences
+  - pymdownx.tabbed: { alternate_style: true }
+  - tables
+nav:
+  - What is Tijori: index.md
+  - Quick Start (5 minutes): quick-start.md
+  - Install:
+      - On a VPS: install-vps.md
+      - Docker and Compose: docker.md
+      - Coolify: coolify.md
+      - HTTPS with Caddy or Nginx: https.md
+  - Connect your app:
+      - Laravel: laravel.md
+      - Node.js: nodejs.md
+      - Mobile apps and presigned uploads: mobile.md
+  - Features:
+      - Image resizing: images.md
+      - Video processing: video.md
+      - Admin panel tour: admin-panel.md
+      - Quotas: quotas.md
+      - Backup, restore and moving servers: backup.md
+  - Reference:
+      - Configuration: configuration.md
+      - CLI: cli.md
+      - Troubleshooting and FAQ: troubleshooting.md
+      - Security notes: security.md
+  - हिन्दी Quick Start: hi/quick-start.md

@@ -1,0 +1,7 @@
+{
+  "name": "tijori/compat-php",
+  "description": "Flysystem S3 compatibility smoke test for Tijori",
+  "require": {
+    "league/flysystem-aws-s3-v3": "^3.0"
+  }
+}

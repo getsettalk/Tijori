@@ -1,0 +1,32 @@
+# systemd unit for Tijori. `sudo tijori service install` writes this for you;
+# use this file only for manual setups:
+#   sudo cp tijori.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now tijori
+[Unit]
+Description=Tijori S3-compatible storage
+Documentation=https://github.com/getsettalk/Tijori
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tijori
+Group=tijori
+ExecStart=/usr/local/bin/tijori serve --config /etc/tijori/tijori.toml
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/tijori
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="32" height="32">
+  <!-- Simplified mark for small sizes: database and image card, no arrows -->
+  <defs>
+    <linearGradient id="tj-fav" gradientUnits="userSpaceOnUse" x1="4" y1="2" x2="60" y2="62">
+      <stop offset="0" stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#9333EA"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#tj-fav)"/>
+  <g fill="#FFFFFF">
+    <ellipse cx="25" cy="15" rx="14" ry="5"/>
+    <path d="M11 18.4A14 5 0 0 0 39 18.4V26.4A14 5 0 0 1 11 26.4Z"/>
+    <path d="M11 29.8A14 5 0 0 0 39 29.8V37.8A14 5 0 0 1 11 37.8Z"/>
+    <path d="M11 41.2A14 5 0 0 0 39 41.2V49.2A14 5 0 0 1 11 49.2Z"/>
+  </g>
+  <rect x="29.6" y="29.6" width="31.8" height="27.8" rx="7.9" fill="url(#tj-fav)"/>
+  <rect x="33" y="33" width="25" height="21" rx="4.5" fill="#FFFFFF"/>
+  <path d="M35.5 51.5L41.7 43.5L45.1 47.7L47.7 44.9L55.6 51.5Z" fill="#6D28D9" stroke="#6D28D9" stroke-width="1.2" stroke-linejoin="round"/>
+  <circle cx="51.4" cy="37.3" r="2.4" fill="#F59E0B"/>
+</svg>

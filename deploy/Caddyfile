@@ -1,0 +1,9 @@
+# Caddy gets an HTTPS certificate automatically.
+# Replace files.example.com with your domain, point its DNS at this server,
+# then: sudo caddy run --config Caddyfile (or put this in /etc/caddy/Caddyfile)
+files.example.com {
+	reverse_proxy 127.0.0.1:9000 {
+		# Stream uploads and downloads instead of buffering them.
+		flush_interval -1
+	}
+}

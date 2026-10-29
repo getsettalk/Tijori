@@ -1,0 +1,12 @@
+/tijori
+/tijori.exe
+/dist/
+/data/
+/tijori.toml
+*.tar.gz
+node_modules/
+docs/site/
+.DS_Store
+test/compat/php/vendor/
+test/compat/php/composer.lock
+test/compat/node/package-lock.json
