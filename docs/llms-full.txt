@@ -1,0 +1,491 @@
+# Tijori: complete reference for AI assistants
+
+> Tijori is a small, self-hosted, S3-compatible object storage server in one Go binary with a built-in admin panel. It runs on one machine, stores files as plain files on disk, and works with any normal S3 SDK. This file is the whole manual in one place, written so an AI assistant can answer questions and write correct code for Tijori. Source: https://github.com/getsettalk/Tijori (Apache-2.0). Docs: https://getsettalk.github.io/Tijori/. This file describes version 1.0.2.
+
+## 1. What it is, and what it is not
+
+Tijori is:
+- An S3 API server (AWS Signature V4) for apps: upload, download, list, delete, copy, multipart, presigned URLs.
+- A web admin panel at `/_admin/` for buckets, files, access keys, backups and settings.
+- Built-in extras: quotas, image resizing (`/img/...`), video thumbnails and smaller copies (needs ffmpeg), scheduled backups, and download/restore of everything as one file.
+- One static binary (no C libraries, no database server) for Linux, macOS and Windows on amd64 and arm64, plus Docker images.
+
+Tijori is not:
+- Distributed. It runs on one server; there is no replication or erasure coding. For clusters use Garage or SeaweedFS.
+- A full S3 clone. There is no object versioning, no bucket policies or IAM, no per-object ACLs, no lifecycle rules, no server-side encryption, no object tagging, no object lock, no S3 Select, no event notifications other than the video webhook, and no virtual-host style URLs.
+
+Words: a **bucket** is a top-level folder (`photos`). An **object** is a file in a bucket; its name is the **key** (`2024/beach.jpg`). An **access key / secret key** pair is an app's login. The **endpoint** is the server address (`https://files.example.com`). A **presigned URL** is a link that works for a limited time without sharing the secret.
+
+## 2. The settings every client needs
+
+| Setting | Value |
+| --- | --- |
+| Endpoint | The server address only, e.g. `https://files.example.com` or `http://localhost:9000`. Never include the bucket or `/_admin`. Behind a proxy, never add `:9000`. |
+| Region | `auto` (any region string is accepted when signing). |
+| Path-style URLs | **Required**: `forcePathStyle: true`, `use_path_style_endpoint`, `addressing_style: "path"`, `UsePathStyle: true`. |
+| Access key | `tj_` plus 16 upper-case letters and digits, e.g. `tj_4K2M9QX7PL3VB8ZN`. |
+| Secret key | 40 letters and digits; shown once when created. |
+| Signature | AWS Signature Version 4 (all current SDKs). Signature V2 gets `SignatureVersionNotSupported`. |
+
+Object URLs are path-style: `<endpoint>/<bucket>/<key>`, for example `https://files.example.com/photos/2024/beach.jpg`.
+
+## 3. Install and run
+
+### Linux or macOS (install script)
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/getsettalk/Tijori/main/scripts/install.sh | sh
+# options: TIJORI_VERSION=v1.0.2 (default latest), TIJORI_INSTALL_DIR=/path
+tijori version
+```
+
+The script downloads the release for the machine, checks its SHA256 checksum against `checksums.txt` and installs to `/usr/local/bin` (or `TIJORI_INSTALL_DIR`).
+
+### Windows
+
+Download `tijori_<version>_windows_amd64.zip` from https://github.com/getsettalk/Tijori/releases, unzip, run `tijori.exe serve`. `tijori service` is Linux/macOS only; on Windows use Task Scheduler or NSSM.
+
+### First start on any machine
+
+```sh
+mkdir my-storage && cd my-storage
+tijori init          # creates tijori.toml, ./data, the admin password and a first access key
+tijori serve         # or just: tijori
+curl http://localhost:9000/health    # {"status":"ok"}
+```
+
+`tijori init` flags: `--data-dir`, `--listen`, `--public-url`, `--admin-password`, `--yes` (no questions). Run as root on Linux it writes `/etc/tijori/tijori.toml` and uses `/var/lib/tijori`.
+
+### Linux server as a service
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/getsettalk/Tijori/main/scripts/install.sh | sudo sh
+sudo tijori init --public-url https://files.example.com
+sudo tijori service install       # systemd unit, dedicated "tijori" user, sandboxing
+systemctl status tijori; journalctl -u tijori -f
+```
+
+Upgrade: run the install command again, then `sudo systemctl restart tijori`. Put HTTPS in front (section 13) and set `listen = "127.0.0.1:9000"`.
+
+### Docker
+
+```sh
+docker run -d --name tijori --restart unless-stopped -p 9000:9000 \
+  -v tijori-data:/data -e TIJORI_ADMIN_PASSWORD=change-me-please \
+  ghcr.io/getsettalk/tijori:latest
+```
+
+- Images (amd64 and arm64): `latest` and `X.Y.Z` (distroless, no shell, no ffmpeg); `latest-ffmpeg` and `X.Y.Z-ffmpeg` (Alpine with ffmpeg for video processing). Version tags have no leading `v`.
+- They run as a non-root user, keep data in `/data`, and have a health check (`tijori healthcheck`).
+- No config file is needed; pass settings as environment variables. Optional fixed app key: `-e TIJORI_ACCESS_KEY=tj_MYAPPKEY0000001 -e TIJORI_SECRET_KEY=<40 random chars>` (set both or neither).
+- With a config file: mount it and set `TIJORI_CONFIG=/etc/tijori/tijori.toml`; keep `data_dir = "/data"` in it.
+- Commands inside: `docker exec tijori tijori key create --name laravel`, `docker exec tijori tijori usage`.
+- Compose file: https://github.com/getsettalk/Tijori/blob/main/deploy/docker-compose.yml.
+
+### Coolify (tested on v4.5.3)
+
+New Resource → Docker Compose (without a Git repository) → paste this → Create Service → Deploy:
+
+```yaml
+services:
+  tijori:
+    image: ghcr.io/getsettalk/tijori:latest
+    restart: unless-stopped
+    environment:
+      - SERVICE_URL_TIJORI_9000
+      - TIJORI_PUBLIC_URL=${SERVICE_URL_TIJORI}
+      - TIJORI_ADMIN_PASSWORD=${SERVICE_PASSWORD_ADMIN}
+      - TIJORI_ACCESS_KEY=${TIJORI_ACCESS_KEY:-}
+      - TIJORI_SECRET_KEY=${TIJORI_SECRET_KEY:-}
+    volumes:
+      - tijori-data:/data
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/tijori", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+volumes:
+  tijori-data:
+```
+
+- `SERVICE_URL_TIJORI_9000` makes Coolify give the service a domain routed to port 9000. Do not add a `ports:` section.
+- The admin password is under General → Service configuration → Admin · Password; the user is `admin`.
+- To upgrade, use More actions → "Pull latest and restart" (or Redeploy). Data stays in the `tijori-data` volume.
+- The free `*.sslip.io` address is plain HTTP; add your own domain with https (port 9000) for real use.
+- Coolify's proxy (Traefik v3) cuts any request after 60 seconds (`499`/`504`). The admin panel uploads in parts, so it is not affected; S3 SDKs should use multipart uploads for big files. Raising the limit needs `--entrypoints.http.transport.respondingTimeouts.readTimeout=600s` (and the same for `https`) in the proxy command, followed by a proxy restart.
+
+### Build from source
+
+Go 1.26 or newer (`go.mod` pins the patched `toolchain go1.27.3`, which Go downloads itself). No C compiler is needed.
+
+```sh
+git clone https://github.com/getsettalk/Tijori.git && cd Tijori
+CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o tijori ./cmd/tijori
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o tijori-linux-arm64 ./cmd/tijori
+docker build -t tijori .            # or --target ffmpeg
+```
+
+A plain `go build` in a git checkout records version, commit and build time from git. Set your own with `-ldflags "-X github.com/getsettalk/Tijori/internal/version.Version=1.2.3 -X .../version.Commit=abc1234 -X .../version.Date=2026-01-01T00:00:00Z"`.
+
+## 4. Client code
+
+### Laravel (Flysystem S3 v3)
+
+```sh
+composer require league/flysystem-aws-s3-v3 "^3.0" --with-all-dependencies
+```
+
+```env
+FILESYSTEM_DISK=s3
+AWS_ACCESS_KEY_ID=tj_XXXXXXXXXXXXXXXX
+AWS_SECRET_ACCESS_KEY=your-secret
+AWS_DEFAULT_REGION=auto
+AWS_BUCKET=my-app
+AWS_ENDPOINT=https://files.example.com
+AWS_USE_PATH_STYLE_ENDPOINT=true
+AWS_URL=https://files.example.com/my-app   # only for public buckets, so Storage::url() works
+```
+
+```php
+$path = $request->file('avatar')->store('avatars');
+Storage::put('notes/hello.txt', 'Hello');
+$url = Storage::temporaryUrl($path, now()->addMinutes(10));                 // private buckets
+$url = Storage::url($path);                                                 // public buckets
+['url' => $u, 'headers' => $h] = Storage::temporaryUploadUrl('uploads/a.jpg', now()->addMinutes(5));
+```
+
+`Storage::setVisibility()` and per-file `public` visibility are accepted but do nothing; visibility is per bucket.
+
+### Node.js (AWS SDK v3)
+
+```js
+import { S3Client, PutObjectCommand, GetObjectCommand, ListObjectsV2Command, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { Upload } from "@aws-sdk/lib-storage";
+
+const s3 = new S3Client({
+  endpoint: process.env.TIJORI_URL, region: "auto", forcePathStyle: true,
+  credentials: { accessKeyId: process.env.TIJORI_ACCESS_KEY, secretAccessKey: process.env.TIJORI_SECRET_KEY },
+});
+await s3.send(new PutObjectCommand({ Bucket: "my-app", Key: "a.txt", Body: "hi", ContentType: "text/plain" }));
+const obj = await s3.send(new GetObjectCommand({ Bucket: "my-app", Key: "a.txt" }));
+const text = await obj.Body.transformToString();
+const list = await s3.send(new ListObjectsV2Command({ Bucket: "my-app", Prefix: "reports/" }));
+await new Upload({ client: s3, params: { Bucket: "my-app", Key: "big.mp4", Body: stream } }).done(); // multipart
+const link = await getSignedUrl(s3, new GetObjectCommand({ Bucket: "my-app", Key: "a.txt" }), { expiresIn: 3600 });
+```
+
+### Python (boto3)
+
+```python
+import boto3
+from botocore.config import Config
+s3 = boto3.client("s3", endpoint_url="https://files.example.com", region_name="auto",
+                  aws_access_key_id="tj_XXXXXXXXXXXXXXXX", aws_secret_access_key="your-secret",
+                  config=Config(s3={"addressing_style": "path"}))
+s3.upload_file("report.pdf", "my-app", "reports/report.pdf")       # multipart for big files
+url = s3.generate_presigned_url("get_object", Params={"Bucket": "my-app", "Key": "reports/report.pdf"}, ExpiresIn=600)
+```
+
+### Go (aws-sdk-go-v2)
+
+```go
+client := s3.New(s3.Options{
+    Region: "auto", BaseEndpoint: aws.String("https://files.example.com"), UsePathStyle: true,
+    Credentials: credentials.NewStaticCredentialsProvider("tj_XXXXXXXXXXXXXXXX", "your-secret", ""),
+})
+_, err := client.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("my-app"), Key: aws.String("hello.txt"), Body: strings.NewReader("hi")})
+```
+
+### curl and the AWS CLI
+
+```sh
+curl --aws-sigv4 "aws:amz:auto:s3" --user "tj_XXXXXXXXXXXXXXXX:your-secret" -T photo.jpg https://files.example.com/my-app/photo.jpg
+aws --endpoint-url https://files.example.com s3 cp photo.jpg s3://my-app/
+aws --endpoint-url https://files.example.com s3 ls s3://my-app/
+```
+
+The AWS CLI needs `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_DEFAULT_REGION=auto` in its environment or profile.
+
+### Mobile and browser uploads (presigned URLs)
+
+Never put a secret key in a mobile app or web page. The backend creates a short-lived presigned PUT URL, and the client uploads with a plain HTTP `PUT`:
+
+```js
+// backend (Node.js)
+const key = `users/${user.id}/${crypto.randomUUID()}.jpg`;
+const url = await getSignedUrl(s3, new PutObjectCommand({ Bucket: "my-app", Key: key }), { expiresIn: 300 });
+// client (React Native / browser)
+await fetch(url, { method: "PUT", body: blob, headers: { Accept: "application/json" } });
+```
+
+```dart
+// Flutter
+final put = await http.put(Uri.parse(data['url']), body: await file.readAsBytes());
+```
+
+- If a `ContentType` was signed into the URL, the client must send exactly that `Content-Type`; otherwise it should send none.
+- Web pages on another domain also need `cors_origins = ["https://app.example.com"]` (or `TIJORI_CORS_ORIGINS`); native apps do not.
+- Limit what a presigned URL can upload with the bucket's `max_object_size`.
+
+## 5. S3 API coverage
+
+Supported operations:
+- Service: ListBuckets (`GET /`).
+- Buckets: CreateBucket, DeleteBucket (bucket must be empty), HeadBucket, GetBucketLocation, GetBucketVersioning (always reports "not enabled"), ListObjects (v1) and ListObjectsV2 (prefix, delimiter, pagination), ListMultipartUploads, DeleteObjects (batch).
+- Objects: PutObject, GetObject (with `Range`, `If-Match`, `If-None-Match`, `If-Modified-Since`, `If-Unmodified-Since`), HeadObject, DeleteObject, CopyObject (same or another bucket, metadata COPY or REPLACE).
+- Multipart: CreateMultipartUpload, UploadPart, UploadPartCopy, CompleteMultipartUpload, AbortMultipartUpload, ListParts. Usual S3 limits: parts of at least 5 MB except the last, up to 10000 parts. A bucket can have at most 1000 unfinished uploads; uploads left unfinished for 7 days are removed.
+- ACL: GetBucketAcl, PutBucketAcl, GetObjectAcl, PutObjectAcl are accepted for SDK compatibility. GET reports public-read when the bucket is public. PUT changes nothing.
+- Metadata: `Content-Type`, `Cache-Control`, `Content-Disposition`, `Content-Encoding`, `Content-Language`, `Expires` and `x-amz-meta-*` are stored and returned.
+- Integrity checks: `Content-MD5` is verified. `x-amz-checksum-*` trailers sent by newer SDKs in aws-chunked uploads are verified too. A mismatch gives `BadDigest`.
+
+Authentication:
+- Signature V4 in the `Authorization` header, or presigned query strings that are valid for at most 7 days.
+- Streaming uploads: `aws-chunked` with `STREAMING-AWS4-HMAC-SHA256-PAYLOAD`, `...-PAYLOAD-TRAILER` and `STREAMING-UNSIGNED-PAYLOAD-TRAILER`.
+- Up to 15 minutes of clock skew is allowed.
+- Every `x-amz-*` header that changes a request must be signed (HeadersNotSigned).
+
+Not supported, answered with `501 NotImplemented`: bucket policy, CORS, lifecycle, tagging, encryption, website, object lock, ownership controls, public access block, logging, notification, replication, accelerate, request payment, object versions, object tagging, retention, legal hold, torrent, restore, select, attributes, and GetObject with `partNumber` (use `Range` instead).
+
+Anonymous requests can only `GET`/`HEAD` objects in public buckets. They can never upload, delete or list.
+
+Errors are S3 XML by default. With `Accept: application/json` on a request (or `error_format = "json"`) they are JSON:
+
+```json
+{"error": {"code": "NoSuchKey", "message": "...", "status": 404, "bucket": "photos", "key": "a.jpg", "resource": "/photos/a.jpg", "request_id": "..."}}
+```
+
+Common codes: `SignatureDoesNotMatch`, `InvalidAccessKeyId`, `AccessDenied`, `RequestTimeTooSkewed`, `NoSuchBucket`, `NoSuchKey`, `BucketNotEmpty`, `BucketAlreadyOwnedByYou`, `QuotaExceeded`, `EntityTooLarge`, `InvalidRange`, `HeadersNotSigned`, `NotImplemented`.
+
+## 6. HTTP routes on the server
+
+| Path | What |
+| --- | --- |
+| `/health` | `{"status":"ok"}` without authentication. Does not reveal the version. |
+| `/metrics` | Prometheus metrics when `metrics = true`: `tijori_info`, `tijori_uptime_seconds`, `tijori_s3_requests_total`, `tijori_s3_errors_total`, `tijori_s3_uploads_total`, `tijori_s3_downloads_total`, `tijori_s3_received_bytes_total`, `tijori_bucket_bytes`, and more. |
+| `/_admin/` | Admin panel (path set by `[admin] path`). |
+| `/img/<bucket>/<key>?w=...` | Resized images (section 7). |
+| `/<bucket>` and `/<bucket>/<key>` | S3 API. |
+| `/` | S3 ListBuckets for clients. A browser visit without credentials is redirected to the admin panel. |
+
+Bucket names follow S3 rules: 3–63 characters, lower-case letters, digits, dots and hyphens; they must start and end with a letter or digit; they cannot look like an IP address or contain `..`. The names `img`, `health` and `metrics` are reserved.
+
+Keys can be any UTF-8 except: `.` or `..` parts, empty parts (`a//b`), backslashes, NUL, and parts starting with `.tijori` (in any case). On Windows, device names (`CON`, `NUL`, `COM1`…), the characters `<>:"|?*`, and parts ending in a space or dot are also refused. A key ending in `/` with an empty body is a folder marker.
+
+## 7. Image resizing
+
+URL: `<endpoint>/img/<bucket>/<key>?w=300`. The original is never changed.
+
+| Parameter | Meaning |
+| --- | --- |
+| `w`, `h` | Width and height in pixels. Images are never made larger than the original. |
+| `fit` | `contain` (default, fits inside the box) or `cover` (fills the box and crops). |
+| `fmt` | `jpeg` or `png` (default: same as the original). |
+| `q` | JPEG quality 1–100 (default 80). |
+
+- Inputs: JPEG, PNG, GIF, WebP. Phone photos are rotated using their EXIF orientation.
+- WebP output is not available because the build uses no C libraries: `fmt=webp` returns JPEG (or PNG when the image has transparency) with an `X-Tijori-Note` header.
+- Results are cached on disk with LRU eviction (`cache_size`). `X-Tijori-Cache: HIT` or `MISS` shows whether the cache was used. The cache key includes the ETag, so replacing an original creates new variants.
+- Public buckets: anyone can open the URL, and responses send `Cache-Control: public, max-age=31536000`. Add `&v=2` to bust browser caches. Private buckets need a presigned URL for the `/img/...` address.
+- Limits: `max_width`/`max_height` (4000), `max_pixels` (50,000,000), `max_input_size` (50MB). Optional `allowed_widths` stops people filling the cache with arbitrary sizes.
+
+## 8. Video processing
+
+- Needs ffmpeg on `PATH` (or use the `latest-ffmpeg` image). Turn it on per bucket: admin panel → edit bucket → Video processing, or `video_process = true` in `[buckets.<name>]`.
+- Uploading `trips/goa.mp4` creates `trips/goa.jpg` (thumbnail at 1 s) and `trips/goa_720p.mp4` (H.264/AAC, at most 720 px high).
+- Choose outputs with `[video] presets` from `thumbnail`, `480p`, `720p`, `1080p`. `workers` sets how many videos run at once.
+- The job queue survives restarts. ffmpeg may only read local files in real video containers.
+- Webhook: `[video] webhook` receives a `POST` with JSON `{"event":"video.processed"|"video.failed","bucket","key","outputs":[{"preset","key","size","content_type"}],"error","duration_ms"}`. The header `X-Tijori-Signature: sha256=<hex HMAC-SHA256 of the raw body with webhook_secret>` signs it. Failed deliveries are retried 3 times.
+
+## 9. Quotas and limits
+
+- `max_total` limits all buckets together; `[buckets.x] max_size` limits one bucket.
+- `max_object_size` (default 5GB) limits the largest file anywhere; `[buckets.x] max_object_size` limits it per bucket.
+- Limits are checked before anything is written. Replacing a file counts only the difference, and unfinished multipart uploads count too.
+- A full bucket gets `403 QuotaExceeded` with a readable message, e.g. `Bucket "photos" is full: quota 10 GB, used 9.9 GB, this upload needs 200 MB more.`
+- A file over the size limit gets `EntityTooLarge`.
+- Usage is counted live and recounted from disk at startup. After editing files on disk by hand, run `tijori usage --recalc`.
+- Sizes accept `KB`, `MB`, `GB`, `TB` (powers of 1024). `0` or empty means no limit.
+
+## 10. Access keys and admin users
+
+- Create keys in the admin panel (Keys → New key) or with `tijori key create --name laravel --buckets photos,docs --permission readwrite|read|write`.
+- Without `--buckets` a key may use every bucket, and only such keys may create buckets.
+- The secret is shown once; the panel shows ready `.env` (Laravel) and Node.js settings at that moment.
+- Revoke with `tijori key revoke <ACCESS_KEY>` or in the panel. It takes effect immediately.
+- An optional root key comes from `TIJORI_ACCESS_KEY`/`TIJORI_SECRET_KEY`. It has full access and is never written to disk.
+- Admin users have the role `admin` or `readonly`. Commands: `tijori admin password [--user NAME] [--password PW] [--readonly]`. `TIJORI_ADMIN_PASSWORD` (or `[admin] password`) sets the `admin` user's password at every start.
+- Keys and bcrypt password hashes are stored in `<data_dir>/tijori.db.json` with mode 0600.
+
+## 11. Admin panel
+
+At `<endpoint>/_admin/`, log in as `admin`.
+- **Dashboard:** storage used, files, buckets, keys, a usage bar per bucket, endpoint, version with commit and build date, uptime, free disk, ffmpeg status, image cache and last backup.
+- **Buckets:** create, edit (Public, Quota, Max file size, Video processing) and delete. Buckets defined in `tijori.toml` are read-only here.
+- **Files:** folders, search, drag-and-drop upload with progress, preview (images, video, audio, PDF), download, share link (presigned, 15 minutes to 7 days), copy public URL, new folder, and delete (also whole folders). Files of 8 MB and more upload in parts of about 15 seconds each with retries, so proxies with time limits don't cut them.
+- **Keys:** create (buckets and permission), list and revoke.
+- **Backup:**
+  - **Download backup:** one `.tar.gz` with everything. It asks for the password again and uses a one-time link valid for 2 minutes.
+  - **Restore from a backup file:** see section 12.
+  - **Automatic backups:** destination, schedule, last result and "Run backup now".
+- **Settings:** About this server (version, commit, build date, Go, platform, update status), theme (auto, light, dark), change password, and the effective configuration with secrets hidden.
+- **Version and updates:** the sidebar (top bar on phones) shows `Tijori vX.Y.Z`. With `check_updates = true` (the default) the server asks the GitHub API anonymously every 12 hours and shows "Update available: vX.Y.Z" with a link to the release notes. Development builds never check.
+- **Security:** `HttpOnly` `SameSite=Strict` session cookies (`Secure` over HTTPS) that last 12 hours, CSRF tokens on every change, a same-origin check, rate-limited logins, a strict Content-Security-Policy and frame blocking. Read-only users can look but not change anything. Options: `[admin] listen = "127.0.0.1:9001"` serves the panel on its own address (reach it with an SSH tunnel); `[admin] enabled = false` turns it off.
+
+## 12. Backups, restore and moving servers
+
+Four ways, all with the same content: every bucket, every file with its metadata, bucket settings, access keys, admin users and the config.
+
+1. **Admin panel, one file (no extra server needed):**
+   - Backup → Download backup saves `tijori-backup-<date>.tar.gz` in the browser, streamed to disk at any size.
+   - Backup → Restore from a backup file uploads it, to the same or another server, while the server runs. The upload goes in parts that fit proxy time limits. The whole file is checked (damaged or cut-off archives, unsafe paths, invalid names, free disk space) before anything changes.
+   - Restore adds buckets, files, metadata, bucket settings, keys and users, and never deletes anything that exists only on the server. An option chooses whether files and keys that exist on both are replaced (default) or kept.
+   - Existing admin users keep their passwords. A `tijori.toml` inside the file is not applied by the panel.
+   - On a plain-HTTP address Chrome holds the download until you click "Keep".
+2. **Export/import (command line):** `tijori export --out file.tar.gz` (or `--out -` for stdout) and `tijori import file.tar.gz` (into an empty data folder; `--force` overwrites). Same format as the panel download, so files move freely between the panel and the command line.
+3. **Scheduled or manual incremental backups:**
+   - `[backup] to` is a folder, `sftp://user@host/path` (uses the system `ssh`, so set up key login) or `s3://bucket/prefix?endpoint=https://...` (`&region=` if needed; credentials in `TIJORI_BACKUP_ACCESS_KEY`/`TIJORI_BACKUP_SECRET_KEY` or `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`).
+   - `schedule` is `daily 03:00`, `weekly sun 04:00`, `every 6h` or `hourly`. `keep` (default 7) is the number of snapshots; deleted files stay in the backup for that many backups.
+   - Only changed files are copied. Run one now with `tijori backup --to DEST` or the panel button.
+   - Restore with `tijori restore --from SRC [--snapshot NAME]` while the server is stopped; the backed-up config is saved as `tijori.restored.toml`.
+4. **File tools:** the data folder holds plain files, so `rsync`, `restic` or `borg` work. Include `tijori.db.json` and `tijori.toml`.
+
+To move a server: download a backup in the panel on the old server, deploy Tijori on the new one, restore there, then point DNS at it. Apps keep the same endpoint and keys.
+
+## 13. Configuration
+
+Tijori reads `./tijori.toml`, then `/etc/tijori/tijori.toml`, or the file given by `--config` or `TIJORI_CONFIG`. It also runs with no file, on defaults plus environment variables. Rules:
+- Unknown keys are errors.
+- Environment variables override the file. The name is `TIJORI_` plus the TOML path in capitals with `_` (`[images] max_width` → `TIJORI_IMAGES_MAX_WIDTH`).
+- Lists are comma-separated (`TIJORI_CORS_ORIGINS=https://a.com,https://b.com`).
+- Bucket settings use `TIJORI_BUCKETS_<NAME>_<SETTING>`, where `_` in the name means `-`. `TIJORI_PUBLIC_BUCKETS=a,b` is a shortcut.
+- Check a config with `tijori doctor`, and restart after changes.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `listen` | `":9000"` | Address and port; use `"127.0.0.1:9000"` behind a proxy. |
+| `data_dir` | `"./data"` | Storage folder (relative to the config file). Docker: `/data`. |
+| `public_url` | | Address users reach, e.g. `https://files.example.com`; used for links. |
+| `region` | `"auto"` | Region reported to clients. |
+| `max_total` | | Limit for all buckets together. |
+| `max_object_size` | `"5GB"` | Largest single file. |
+| `log_format` / `log_level` | `"text"` / `"info"` | `text` or `json`; `debug`, `info`, `warn`, `error`. |
+| `metrics` | `false` | Serve `/metrics`. |
+| `cors_origins` | `[]` | Web origins allowed to call the S3 API and `/img` from JavaScript; `["*"]` allows any site. |
+| `trust_proxy_headers` | `true` | Use the right-most `X-Forwarded-For` entry when the direct peer is private or loopback. |
+| `check_updates` | `true` | Show "Update available" in the panel (anonymous GitHub API request every 12 h). |
+| `error_format` | `"auto"` | `auto` (XML, JSON when `Accept: application/json`), `xml` or `json`. |
+| `access_key`, `secret_key` | | Optional root key (usually `TIJORI_ACCESS_KEY`/`TIJORI_SECRET_KEY`). |
+| `[admin] enabled`, `path`, `listen`, `password` | `true`, `"/_admin"`, , | Admin panel switch, URL path, separate address, `admin` password (`TIJORI_ADMIN_PASSWORD`). |
+| `[buckets.<name>] public_read`, `max_size`, `max_object_size`, `video_process` | `false`, , , `false` | Buckets created at startup; their settings can then only be changed in the file. |
+| `[images] enabled`, `max_width`, `max_height`, `max_pixels`, `max_input_size`, `allowed_widths`, `quality`, `cache_size` | `true`, `4000`, `4000`, `50000000`, `"50MB"`, , `80`, `"500MB"` | Image resizing. |
+| `[video] ffmpeg`, `workers`, `presets`, `webhook`, `webhook_secret` | `""`, `1`, `["thumbnail","720p"]`, , | Video processing. |
+| `[backup] to`, `schedule`, `keep` | , , `7` | Automatic backups. |
+
+Example:
+
+```toml
+listen     = "127.0.0.1:9000"
+data_dir   = "/var/lib/tijori"
+public_url = "https://files.example.com"
+max_total  = "100GB"
+
+[buckets.photos]
+public_read = true
+max_size = "10GB"
+max_object_size = "20MB"
+
+[images]
+allowed_widths = [150, 300, 600, 1200]
+
+[backup]
+to = "s3://my-backups?endpoint=https://s3.eu-central-003.backblazeb2.com"
+schedule = "daily 03:00"
+```
+
+## 14. CLI
+
+Every command accepts `--config PATH`. `tijori <command> -h` lists all flags. Commands that change keys or buckets work while the server runs, which picks the change up within seconds.
+
+| Command | What it does |
+| --- | --- |
+| `tijori` / `tijori serve` | Start the server. |
+| `tijori init` | Config, data folder, admin password and first key (`--data-dir --listen --public-url --admin-password --yes`). |
+| `tijori key create / list / revoke ACCESS_KEY` | Manage access keys (`--name --buckets --permission`). |
+| `tijori bucket create NAME / list / delete NAME` | `--public --max-size --max-object-size`; delete needs an empty bucket unless `--force`. |
+| `tijori usage [--recalc]` | Space per bucket. |
+| `tijori admin password` | Reset a password (`--user --password --readonly`). |
+| `tijori backup --to DEST [--keep N]` / `tijori restore --from SRC [--snapshot NAME]` | Incremental backup / restore (server stopped). |
+| `tijori export --out FILE` / `tijori import FILE [--force]` | One-file archive. |
+| `tijori service install / uninstall` | systemd (Linux) or launchd (macOS) service. |
+| `tijori doctor` | Checks config, permissions, disk space, ffmpeg, port and keys. |
+| `tijori version` / `tijori healthcheck` | Build info / exit 0 when `/health` answers. |
+
+## 15. Reverse proxies and HTTPS
+
+- Use HTTPS on any untrusted network, set `public_url` to the https address, and make Tijori listen on `127.0.0.1`.
+- **Caddy:** `files.example.com { reverse_proxy 127.0.0.1:9000 { flush_interval -1 } }`.
+- **Nginx:** `client_max_body_size 0;` (otherwise uploads over 1 MB fail with 413), `proxy_request_buffering off;`, `proxy_buffering off;`, `proxy_set_header Host $host;` (signatures include the host), `proxy_set_header X-Forwarded-Proto $scheme;`. Long single uploads may also need larger `proxy_read_timeout`/`client_body_timeout`.
+- **Cloudflare proxy (orange cloud):** limits uploads to 100 MB on the free plan, so use multipart uploads or turn the proxy off for the domain.
+- **Coolify/Traefik:** see section 3 for the 60-second limit.
+
+## 16. Security model (summary)
+
+- Signature V4 checked in constant time; presigned URLs last at most 7 days.
+- Path traversal is impossible: keys are validated and joined safely.
+- Quotas and image limits are checked before work starts.
+- Public buckets allow anonymous reads only.
+- Uploaded HTML, SVG and XML are served with `Content-Security-Policy: sandbox`, and every response sends `nosniff`.
+- Secrets and query strings are never logged.
+- The real client IP is taken from the right-most `X-Forwarded-For` entry, and only from private or loopback peers.
+- Logins and password confirmations are rate limited (IPv6 grouped by /64).
+- Docker images and the systemd unit run unprivileged.
+- Archives are checked on import and restore.
+- Backup downloads need the password again and a one-time link.
+- The only outgoing requests are the ones you configure (backups, video webhook) plus the optional update check.
+
+What users should do: use HTTPS, give each app its own key limited to its buckets and permission, never ship secrets in apps (use presigned URLs), protect or disable the admin panel, keep backups and test a restore, keep Tijori updated, and rotate any secret that appeared in a screenshot, chat or log.
+
+## 17. Data on disk
+
+```
+<data_dir>/
+  buckets/<bucket>/<key>        file contents (plain files)
+  meta/<bucket>/<key>.json      metadata: content type, ETag, size, time, user metadata
+  meta/<bucket>/.tijori-bucket.json   bucket settings and creation time
+  tijori.db.json                access keys, admin users, usage counters (mode 0600)
+  .tmp/  .multipart/  .cache/images/  .jobs/video/   temporary, uploads in progress, resize cache, video jobs
+```
+
+Every write goes to `.tmp` first, is fsynced and then renamed into place, so readers never see half a file. Files copied in by hand get their metadata rebuilt on first read.
+
+## 18. Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| `SignatureDoesNotMatch` | Wrong secret (copy again, no spaces); path-style not enabled; endpoint contains the bucket or `:9000` behind a proxy; proxy changes the `Host` header. |
+| `InvalidAccessKeyId` | The key does not exist or was revoked (`tijori key list`). |
+| `AccessDenied` | The key is not allowed on that bucket or operation (read-only, write-only, limited buckets; only all-bucket keys create buckets), or an anonymous request to a private bucket. Opening `/` in a browser shows it because ListBuckets needs a key; since 1.0.1 browsers are redirected to `/_admin/`. |
+| `RequestTimeTooSkewed` | The client or server clock is off by more than 15 minutes (`sudo timedatectl set-ntp true`). |
+| `413` from Nginx | `client_max_body_size 0;`. |
+| `413` from Cloudflare over 100 MB | Use multipart or disable the proxy for the domain. |
+| `499`/`504` after about 60 seconds | The proxy time limit (Coolify Traefik 60 s). Use multipart in SDKs; the admin panel already sends parts. |
+| `QuotaExceeded` / `EntityTooLarge` | A limit was reached (section 9). |
+| Browser "blocked by CORS policy" | Add the page's origin to `cors_origins` and restart. |
+| `ERR_BLOCKED_BY_CLIENT` | An ad blocker is blocking `*.sslip.io`; allow it or use your own domain. |
+| "Permission denied" at start | `sudo chown -R tijori:tijori /var/lib/tijori`. |
+| "cannot listen on :9000" | The port is in use; set `listen = ":9100"`. |
+| Forgot the admin password | `sudo tijori admin password` (or change `TIJORI_ADMIN_PASSWORD`/`SERVICE_PASSWORD_ADMIN` and restart). |
+| Video processing "not installed" | Install ffmpeg or use the `-ffmpeg` image. |
+| `fmt=webp` returns JPEG | Expected: WebP output is not supported. |
+
+## 19. Guidance for AI assistants
+
+- Always configure SDKs with endpoint = server address only, region `auto` and path-style on. Never suggest `bucket.files.example.com` URLs.
+- Never put an access secret in mobile apps, browser JavaScript or public repositories. Generate presigned URLs on a backend.
+- Public access is a per-bucket switch, not per object. Do not suggest bucket policies, IAM, `x-amz-acl` or `setVisibility` for access control.
+- Unsupported features are listed in section 5. Suggest the Tijori alternative: the bucket Public switch instead of a policy, `cors_origins` instead of PutBucketCors, backups instead of replication, new keys instead of versioning.
+- For big files use multipart (`Upload` from `@aws-sdk/lib-storage`, boto3 `upload_file`, Laravel streams). Behind Coolify a single request must finish within 60 seconds.
+- Use `/img/<bucket>/<key>?w=...` for thumbnails instead of resizing in the app.
+- For backups on small setups, recommend the admin panel's Download backup and Restore from a backup file. For automation, recommend `[backup]` with a schedule to another disk, an SFTP server or an S3 service.
+- When debugging, ask for the exact error code (XML `<Code>` or JSON `error.code`) and the output of `tijori doctor`.

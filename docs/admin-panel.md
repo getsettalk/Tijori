@@ -10,8 +10,9 @@ its password comes from `tijori init` or the `TIJORI_ADMIN_PASSWORD` variable.
 ## Dashboard
 
 Total storage used, file and bucket counts, a usage bar for each bucket with
-a quota, server version, free disk, whether ffmpeg was found, image cache size
-and the last backup result.
+a quota, server version (with commit, build date and whether an update is available), free disk,
+whether ffmpeg was found, image cache size and the last backup result. The version is also shown
+at the bottom of the sidebar on every page.
 
 ## Buckets
 
@@ -40,7 +41,11 @@ Laravel and Node.js settings. **Revoke** stops a key immediately.
 
 ## Backup
 
-Shows the destination, schedule and last result, and has a **Run backup now** button.
+- **Download backup:** every bucket, file, key and setting as one `.tar.gz` file on your computer
+  (asks for your password again).
+- **Restore from a backup file:** upload such a file to bring everything back, here or on a new
+  server, while Tijori runs. See [Backup, restore and moving servers](backup.md).
+- **Automatic backups:** destination, schedule and last result, with a **Run backup now** button.
 
 ## Settings
 

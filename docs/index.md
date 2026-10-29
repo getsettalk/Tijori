@@ -35,3 +35,8 @@ of servers, look at Garage or SeaweedFS.
 | **Presigned URL** | A link that works for a limited time without sharing your secret. |
 
 Next: [Quick Start in 5 minutes](quick-start.md).
+
+!!! tip "Using an AI assistant?"
+    Give it [llms-full.txt](llms-full.txt): the whole manual in one plain-text file, written so
+    ChatGPT, Claude, Cursor and similar tools answer questions about Tijori correctly.
+    [llms.txt](llms.txt) is the short index in the [llms.txt](https://llmstxt.org) format.

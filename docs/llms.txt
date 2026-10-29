@@ -1,0 +1,50 @@
+# Tijori
+
+> Tijori is a small, self-hosted, S3-compatible object storage server in one Go binary, with a built-in admin panel. It runs on one machine and stores files as plain files on disk. Apps use any normal S3 SDK (Laravel/Flysystem, AWS SDK for JavaScript v3, boto3, aws-sdk-go-v2, AWS CLI, curl --aws-sigv4) with path-style URLs and region "auto". It adds quotas, image resizing, video thumbnails via ffmpeg, backups, and download/restore of everything as one file.
+
+Key facts for answering questions about Tijori:
+
+- Default address `http://localhost:9000`. Admin panel at `/_admin/` (user `admin`). Health check at `GET /health` returns `{"status":"ok"}`.
+- S3 settings are always: endpoint = the server address with no bucket and no path, region `auto`, **path-style URLs on**. Virtual-host style URLs (`bucket.host`) are not supported.
+- Access keys look like `tj_` plus 16 characters; secrets are 40 characters and are shown once.
+- Each key is limited to some buckets (or all) and to `read`, `write` or `readwrite`. A bucket is either private or public-read; there are no bucket policies and no per-object ACLs.
+- Every setting is a TOML key in `tijori.toml` or an environment variable `TIJORI_<PATH>`, for example `TIJORI_ADMIN_PASSWORD` or `TIJORI_IMAGES_MAX_WIDTH`.
+- Single server only. There is no replication, no object versioning, no lifecycle rules and no server-side encryption.
+- License Apache-2.0. Source code, releases and Docker images: https://github.com/getsettalk/Tijori, `ghcr.io/getsettalk/tijori`.
+
+## Docs
+
+- [Complete reference for AI assistants](https://getsettalk.github.io/Tijori/llms-full.txt): everything below in one plain-text file
+- [What is Tijori](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/index.md): concepts and words (bucket, object, key, endpoint, presigned URL)
+- [Quick Start](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/quick-start.md): install, `tijori init`, `tijori serve`, first upload in 5 minutes
+- [Configuration](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/configuration.md): every setting, default and environment variable
+- [CLI](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/cli.md): serve, init, key, bucket, usage, admin, backup, restore, export, import, service, doctor
+- [Troubleshooting and FAQ](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/troubleshooting.md): SignatureDoesNotMatch, AccessDenied, 413, 499/504, CORS and more
+
+## Install
+
+- [Install on a VPS](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/install-vps.md): install script, systemd service
+- [Docker and Compose](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/docker.md): image tags, volumes, environment variables
+- [Coolify](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/coolify.md): Docker Compose resource, generated domain and password, the 60-second proxy limit
+- [HTTPS with Caddy or Nginx](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/https.md): reverse proxy settings that matter for S3
+- [Build from source](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/build-from-source.md): Go 1.26+, CGO-free static builds, cross-compiling
+
+## Connect apps
+
+- [Laravel](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/laravel.md): `.env` for the `s3` disk, temporary URLs and upload URLs
+- [Node.js](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/nodejs.md): AWS SDK v3 client, multipart uploads, presigned links
+- [Mobile apps and presigned uploads](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/mobile.md): Flutter and React Native uploads without shipping secrets, CORS for web pages
+
+## Features
+
+- [Image resizing](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/images.md): `/img/<bucket>/<key>?w=&h=&fit=&fmt=&q=`
+- [Video processing](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/video.md): thumbnails and 480p/720p/1080p copies with ffmpeg, signed webhooks
+- [Quotas](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/quotas.md): server, bucket and file size limits
+- [Admin panel](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/admin-panel.md): dashboard, buckets, file browser, keys, backup, settings
+- [Backup, restore and moving servers](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/backup.md): download and restore one file in the panel, scheduled backups to a folder, SFTP or S3
+
+## Optional
+
+- [Security notes](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/security.md): what Tijori protects and what to do yourself
+- [Changelog](https://raw.githubusercontent.com/getsettalk/Tijori/main/CHANGELOG.md): changes in each release
+- [README](https://raw.githubusercontent.com/getsettalk/Tijori/main/README.md): overview with code examples for every language

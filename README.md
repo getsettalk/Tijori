@@ -378,6 +378,11 @@ those, look at [Garage](https://garagehq.deuxfleurs.fr/) or [SeaweedFS](https://
 | [Build it yourself](docs/build-from-source.md) | | | |
 | [HTTPS](docs/https.md) | | [Backups](docs/backup.md) | |
 
+**🤖 Using an AI assistant?** Give it [`llms-full.txt`](docs/llms-full.txt)
+([online](https://getsettalk.github.io/Tijori/llms-full.txt)): the whole manual in one file, so
+ChatGPT, Claude, Cursor and similar tools answer questions about Tijori correctly. The short
+index is [`llms.txt`](https://getsettalk.github.io/Tijori/llms.txt) in the [llms.txt](https://llmstxt.org) format.
+
 ## 🤝 Contributing
 
 Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md). Run the

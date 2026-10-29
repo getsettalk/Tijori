@@ -38,10 +38,11 @@ You can choose a key up front, so you can put it in your app's settings right aw
 
 | Tag | Contents |
 | --- | --- |
-| `latest`, `1.0.0` | Small image (distroless), no ffmpeg |
-| `latest-ffmpeg`, `1.0.0-ffmpeg` | Alpine with ffmpeg, for [video processing](video.md) |
+| `latest`, `1.0.2` | Small image (distroless), no ffmpeg |
+| `latest-ffmpeg`, `1.0.2-ffmpeg` | Alpine with ffmpeg, for [video processing](video.md) |
 
-Both run as a non-root user and include a health check.
+Every release has its own version tag (without a leading `v`). Both images are built for amd64 and
+arm64, run as a non-root user and include a health check.
 
 ## Docker Compose
 
