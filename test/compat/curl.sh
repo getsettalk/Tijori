@@ -20,11 +20,15 @@ s3 "$U/$B?list-type=2" | grep -q "<Key>dir/file.bin</Key>" && ok "list"
 code=$(curl -s -o /dev/null -w '%{http_code}' --aws-sigv4 "$SIG" --user "${TIJORI_ACCESS_KEY}:wrong-secret-wrong" "$U/$B/dir/file.bin")
 [ "$code" = 403 ] || fail "wrong secret returned $code, expected 403"
 ok "wrong secret -> 403"
-code=$(curl -s -o /dev/null -w '%{http_code}' --path-as-is --aws-sigv4 "$SIG" --user "$AUTH" -T "$tmp/in.bin" "$U/$B/../escape")
+rc=0
+code=$(curl -s -o /dev/null -w '%{http_code}' --path-as-is --aws-sigv4 "$SIG" --user "$AUTH" -T "$tmp/in.bin" "$U/$B/../escape") || rc=$?
 # 400 when Tijori sees "..". Behind a proxy that cleans the path first, the
-# signature no longer matches, so 403. Anything else is a failure.
+# signature no longer matches, so 403. Anything else is a failure. Newer curl
+# builds refuse to sign a path with ".." and send nothing (exit 43); the Go
+# tests cover that case on every platform.
 case "$code" in
   400|403) ok "path traversal rejected ($code)" ;;
+  000) [ "$rc" = 43 ] && ok "path traversal: skipped, this curl does not send '..' paths" || fail "path traversal: curl exit $rc" ;;
   *) fail "path traversal returned $code" ;;
 esac
 s3 -X DELETE "$U/$B/dir/file.bin" && s3 -X DELETE "$U/$B" && ok "cleanup"

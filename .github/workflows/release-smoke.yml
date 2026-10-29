@@ -37,9 +37,9 @@ jobs:
       run:
         shell: bash
     steps:
+      # Test scripts come from the branch or tag this workflow runs on; the
+      # binary and installer always come from the release being tested.
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.version }}
       - name: Install with the one-line installer (Linux, macOS)
         if: runner.os != 'Windows'
         run: |
@@ -103,4 +103,9 @@ jobs:
           docker exec t1 tijori version | tee version.txt | grep -q "${TIJORI_VERSION#v}"
           # The admin panel shows commit and build date; both must be set.
           if grep -Eq "commit none|built unknown" version.txt; then echo "missing build info"; exit 1; fi
-          docker exec t1 id
+          # The admin panel reports the same version after login.
+          curl -sf -H 'Content-Type: application/json' -d '{"username":"admin","password":"ci-password-123"}' \
+            localhost:9000/_admin/api/login | grep -q "\"version\":\"${TIJORI_VERSION#v}\""
+          # Images run as an unprivileged user (distroless has no `id` command).
+          user=$(docker inspect -f '{{.Config.User}}' t1); echo "runs as: $user"
+          case "$user" in ""|root|0|root:*|0:*) echo "image runs as root"; exit 1 ;; esac
