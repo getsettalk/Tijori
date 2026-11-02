@@ -19,6 +19,11 @@
 - AWS Signature V4 on every request, compared in constant time; 15 minutes of allowed clock skew; presigned URLs expire (7 days maximum).
 - Object keys with `..`, `.`, empty parts, backslashes or NUL bytes are rejected, so no request can reach files outside the bucket folders.
 - Quotas and size limits are checked before anything is written. Image processing refuses huge images to prevent memory exhaustion.
+- Images are decoded by memory-safe Go code. The WebP codec is libwebp translated into Go (via
+  WebAssembly), so a booby-trapped WebP file cannot corrupt memory the way native-library bugs such
+  as CVE-2023-4863 could. Release builds never load a system libwebp.
+- Animated GIF and WebP files are measured from their structure before decoding (frames × size), so
+  an "animation bomb" gets its first frame only instead of filling memory.
 - `tijori.db.json` (keys and password hashes) and generated configs are written with `0600` permissions. Admin passwords use bcrypt.
 - Admin panel: `HttpOnly` + `SameSite=Strict` session cookies (`Secure` behind HTTPS), CSRF tokens on every change, rate-limited logins, a strict Content-Security-Policy and clickjacking protection.
 - Stored HTML, SVG and XML files are served with `Content-Security-Policy: sandbox`, so an uploaded web page cannot run scripts on your Tijori domain. All responses send `X-Content-Type-Options: nosniff`.

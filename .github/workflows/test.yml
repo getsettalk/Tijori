@@ -26,13 +26,14 @@ jobs:
       - name: Install ffmpeg (video tests)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
-      - run: go vet ./...
+      # nodynamic: use the built-in WebP codec, never a system libwebp (as releases do)
+      - run: go vet -tags nodynamic ./...
       - name: Tests with race detector
         if: runner.os == 'Linux'
-        run: go test -race -count=1 ./...
+        run: go test -tags nodynamic -race -count=1 ./...
       - name: Tests
         if: runner.os != 'Linux'
-        run: go test -count=1 ./...
+        run: go test -tags nodynamic -count=1 ./...
 
   lint:
     runs-on: ubuntu-latest
@@ -45,14 +46,16 @@ jobs:
         with:
           install-go: false
       - name: govulncheck (known vulnerabilities in Go and dependencies)
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest -tags nodynamic ./...
       - name: Fuzz key paths briefly
         run: go test -run='^$' -fuzz=FuzzKeyPaths -fuzztime=20s ./internal/storage
+      - name: Fuzz the image structure parsers briefly
+        run: go test -tags nodynamic -run='^$' -fuzz=FuzzFrameCount -fuzztime=20s ./internal/imageproc
       - name: Build every release target (static, CGO off)
         run: |
           for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
             out=/tmp/tijori-${t%/*}-${t#*/}
-            GOOS=${t%/*} GOARCH=${t#*/} CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o $out ./cmd/tijori
+            GOOS=${t%/*} GOARCH=${t#*/} CGO_ENABLED=0 go build -tags nodynamic -trimpath -ldflags "-s -w" -o $out ./cmd/tijori
           done
           ls -lh /tmp/tijori-*
           file /tmp/tijori-linux-amd64 | grep -q "statically linked"
@@ -72,7 +75,7 @@ jobs:
           python-version: "3.12"
       - name: Start Tijori
         run: |
-          go build -o tijori ./cmd/tijori
+          go build -tags nodynamic -o tijori ./cmd/tijori
           TIJORI_DATA_DIR=$RUNNER_TEMP/data TIJORI_ACCESS_KEY=tj_CITESTKEY000000 TIJORI_SECRET_KEY=ci-secret-ci-secret-ci-secret-ci-secret ./tijori serve &
           for i in $(seq 1 30); do curl -sf localhost:9000/health && break; sleep 1; done
       - name: Node.js SDK

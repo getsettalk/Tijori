@@ -37,7 +37,7 @@ Key facts for answering questions about Tijori:
 
 ## Features
 
-- [Image resizing](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/images.md): `/img/<bucket>/<key>?w=&h=&fit=&fmt=&q=`
+- [Image resizing](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/images.md): `/img/<bucket>/<key>?w=&h=&fit=&pos=&fp=&crop=&fmt=&q=`; smart crop, focal points, WebP output, animations
 - [Video processing](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/video.md): thumbnails and 480p/720p/1080p copies with ffmpeg, signed webhooks
 - [Quotas](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/quotas.md): server, bucket and file size limits
 - [Admin panel](https://raw.githubusercontent.com/getsettalk/Tijori/main/docs/admin-panel.md): dashboard, buckets, file browser, keys, backup, settings

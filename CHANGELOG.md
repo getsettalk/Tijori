@@ -6,7 +6,33 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-02
+
+### Added
+- **Images come back in the format you uploaded.** WebP stays WebP (lossless stays lossless), GIF
+  stays GIF, and animated GIF and WebP files stay animated. `fmt=webp` now really writes WebP (from
+  JPEG, PNG or GIF), and `fmt=auto` sends WebP to browsers that accept it (with `Vary: Accept`). GIF
+  and WebP animations can be converted into each other.
+- **Proper cropping:**
+  - `pos` keeps a side or corner with `fit=cover` (`top`, `bottom-left`…).
+  - `pos=smart` finds the subject by colour contrast, detail and skin tones, ignoring sky, walls,
+    floors and horizons, and avoids cutting objects in half.
+  - `fp=x,y` sets a focal point.
+  - `crop=x,y,w,h` cuts an exact rectangle first.
+- New fit modes: `fit=pad` (whole image plus bars, in `bg` colour or transparent) and `fit=fill`
+  (stretch to the exact size).
+- `dpr` for Retina screens, `rot` and `flip`, `lossless=1` for WebP, `bg` for pads and JPEG
+  backdrops, and `anim=0` for a still frame.
+- Admin panel file thumbnails use the smart crop and show the first frame of animations.
+
 ### Changed
+- The WebP codec is libwebp translated to pure Go: still one static binary with no C libraries, on
+  every platform. Release builds use the `nodynamic` build tag so a system libwebp is never used.
+  Binaries are about 3 MB larger.
+- Animations are resized only up to 25 million pixels in total (frames × size); larger ones return
+  their first frame with an `X-Tijori-Note` header.
+- Resized images are rendered again after upgrades that change processing (the cache key has a
+  render version).
 - Backup page: on a plain HTTP address, a note explains that the browser may ask to confirm the
   download and that the file travels unencrypted. The password dialog includes the user name for
   password managers.

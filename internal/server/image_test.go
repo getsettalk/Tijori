@@ -12,6 +12,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/gen2brain/webp"
 
 	"github.com/getsettalk/Tijori/internal/auth"
 	"github.com/getsettalk/Tijori/internal/config"
@@ -77,5 +78,65 @@ func TestImageRoute(t *testing.T) {
 	}
 	if resp, _ := get(e.url + "/img/pics/nope.jpg?w=10"); resp.StatusCode != 404 {
 		t.Fatalf("missing: %d", resp.StatusCode)
+	}
+}
+
+func TestImageRouteKeepsWebP(t *testing.T) {
+	e := startServer(t, func(c *config.Config) { c.Buckets["pics"] = config.BucketConfig{PublicRead: true} })
+	img := image.NewRGBA(image.Rect(0, 0, 800, 600))
+	for y := 0; y < 600; y++ {
+		for x := 0; x < 800; x++ {
+			img.Set(x, y, color.RGBA{uint8(x / 4), uint8(y / 3), 90, 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := webp.Encode(&buf, img, webp.Options{Quality: 80}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.s3.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("pics"), Key: aws.String("photo.webp"),
+		Body: bytes.NewReader(buf.Bytes()), ContentType: aws.String("image/webp")}); err != nil {
+		t.Fatal(err)
+	}
+	get := func(url, accept string) (*http.Response, []byte) {
+		req, _ := http.NewRequest("GET", url, nil)
+		if accept != "" {
+			req.Header.Set("Accept", accept)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return resp, b
+	}
+	size := func(b []byte) (string, int, int) {
+		cfg, format, err := image.DecodeConfig(bytes.NewReader(b))
+		if err != nil {
+			t.Fatalf("output does not decode: %v", err)
+		}
+		return format, cfg.Width, cfg.Height
+	}
+
+	// WebP in, WebP out, also when served from the cache.
+	for _, state := range []string{"MISS", "HIT"} {
+		resp, body := get(e.url+"/img/pics/photo.webp?w=200&h=200&fit=cover&pos=top", "")
+		if f, w, h := size(body); resp.StatusCode != 200 || f != "webp" || w != 200 || h != 200 ||
+			resp.Header.Get("Content-Type") != "image/webp" || resp.Header.Get("X-Tijori-Cache") != state {
+			t.Fatalf("%s: %d %s %dx%d %s", state, resp.StatusCode, f, w, h, resp.Header.Get("Content-Type"))
+		}
+	}
+	// fmt=auto follows the browser and tells caches so.
+	resp, body := get(e.url+"/img/pics/photo.webp?w=100&fmt=auto", "image/avif,image/webp,*/*")
+	if f, _, _ := size(body); f != "webp" || resp.Header.Get("Vary") != "Accept" {
+		t.Fatalf("auto with webp: %s vary=%q", f, resp.Header.Get("Vary"))
+	}
+	resp, body = get(e.url+"/img/pics/photo.webp?w=100&fmt=auto", "image/png,image/*")
+	if f, _, _ := size(body); f != "jpeg" || resp.Header.Get("Vary") != "Accept" {
+		t.Fatalf("auto without webp: %s", f)
+	}
+	// Crop errors are explained.
+	if resp, body := get(e.url+"/img/pics/photo.webp?crop=900,900,10,10", ""); resp.StatusCode != 400 || !bytes.Contains(body, []byte("outside")) {
+		t.Fatalf("crop outside: %d %s", resp.StatusCode, body)
 	}
 }

@@ -127,7 +127,7 @@ Download `tijori_<version>_windows_amd64.zip` from [Releases](https://github.com
 ```sh
 git clone https://github.com/getsettalk/Tijori.git
 cd Tijori
-CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o tijori ./cmd/tijori
+CGO_ENABLED=0 go build -tags nodynamic -trimpath -ldflags "-s -w" -o tijori ./cmd/tijori
 ./tijori version
 ```
 
@@ -266,16 +266,22 @@ Allow its address with `cors_origins = ["https://app.example.com"]` (CORS).
 
 ## 🖼️ Image resizing
 
-Change the URL, get a smaller image. The original is never touched and results are cached.
+Change the URL, get a resized, cropped or converted image. The original is never touched and results
+are cached. You get back the format you uploaded (WebP stays WebP, animated GIFs stay animated) unless
+you ask for another.
 
 | URL | Result |
 | --- | --- |
-| `/img/photos/beach.jpg?w=800` | 800 px wide |
-| `/img/photos/beach.jpg?w=200&h=200&fit=cover` | square thumbnail, cropped |
-| `/img/photos/beach.jpg?w=400&q=70&fmt=jpeg` | smaller JPEG |
+| `/img/photos/beach.jpg?w=800` | 800 px wide, still JPEG |
+| `/img/photos/beach.jpg?w=300&h=300&fit=cover&pos=smart` | square thumbnail that keeps the subject |
+| `/img/photos/team.jpg?w=200&h=200&fit=cover&pos=top` | avatar that keeps the head |
+| `/img/photos/beach.jpg?w=1200&h=400&fit=cover&fp=0.7,0.3` | banner around a focal point |
+| `/img/shop/shoe.png?w=600&h=600&fit=pad&bg=ffffff` | same-size product image, nothing cut off |
+| `/img/photos/beach.jpg?w=800&fmt=auto` | WebP for browsers that accept it |
 
-Public buckets work as-is; private buckets use a presigned `/img/...` URL. Phone photos are rotated
-correctly. Details: [docs/images.md](docs/images.md).
+Also: exact `crop=x,y,w,h`, `fit=fill`, `dpr=2` for Retina, `rot`, `flip`, `q`, lossless WebP and
+`anim=0`. Public buckets work as-is; private buckets use a presigned `/img/...` URL. Phone photos are
+turned upright. Details with examples: [docs/images.md](docs/images.md).
 
 ## 🎬 Video processing
 

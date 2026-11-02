@@ -46,6 +46,12 @@ Nginx: `proxy_read_timeout` / `client_body_timeout`). The admin panel uploads bi
 since 1.0.1; S3 SDKs use multipart for big files. To allow long single uploads, raise the proxy's
 timeout (see [Coolify](coolify.md#long-uploads-and-the-60-second-proxy-limit)).
 
+## A thumbnail cuts off the person or product
+
+`fit=cover` cuts from the centre by default. Add `pos=smart` to let Tijori find the subject,
+`pos=top` for people, a focal point `fp=x,y`, or an exact `crop=x,y,w,h`. See
+[Image resizing](images.md#choosing-what-a-crop-keeps).
+
 ## `QuotaExceeded` or `EntityTooLarge`
 
 A bucket, server or file-size limit was reached. See [Quotas](quotas.md).

@@ -1,6 +1,6 @@
 # Tijori: complete reference for AI assistants
 
-> Tijori is a small, self-hosted, S3-compatible object storage server in one Go binary with a built-in admin panel. It runs on one machine, stores files as plain files on disk, and works with any normal S3 SDK. This file is the whole manual in one place, written so an AI assistant can answer questions and write correct code for Tijori. Source: https://github.com/getsettalk/Tijori (Apache-2.0). Docs: https://getsettalk.github.io/Tijori/. This file describes version 1.0.2.
+> Tijori is a small, self-hosted, S3-compatible object storage server in one Go binary with a built-in admin panel. It runs on one machine, stores files as plain files on disk, and works with any normal S3 SDK. This file is the whole manual in one place, written so an AI assistant can answer questions and write correct code for Tijori. Source: https://github.com/getsettalk/Tijori (Apache-2.0). Docs: https://getsettalk.github.io/Tijori/. This file describes version 1.1.0.
 
 ## 1. What it is, and what it is not
 
@@ -274,17 +274,27 @@ Keys can be any UTF-8 except: `.` or `..` parts, empty parts (`a//b`), backslash
 
 ## 7. Image resizing
 
-URL: `<endpoint>/img/<bucket>/<key>?w=300`. The original is never changed.
+URL: `<endpoint>/img/<bucket>/<key>?w=300`. The original is never changed. By default the output has the same format as the original: JPEG→JPEG, PNG→PNG, WebP→WebP (lossless stays lossless), GIF→GIF, and animated GIF/WebP stay animated.
 
 | Parameter | Meaning |
 | --- | --- |
-| `w`, `h` | Width and height in pixels. Images are never made larger than the original. |
-| `fit` | `contain` (default, fits inside the box) or `cover` (fills the box and crops). |
-| `fmt` | `jpeg` or `png` (default: same as the original). |
-| `q` | JPEG quality 1–100 (default 80). |
+| `w`, `h` | Width and height in pixels. Give one to keep the aspect ratio. Never enlarged (except `fit=fill`). |
+| `fit` | `contain` (default: fit inside the box), `cover` (fill the box, cut the rest), `pad` (fit inside, add bars to the exact size), `fill` (stretch to the exact size). `inside`, `crop`, `stretch` are aliases. |
+| `pos` (or `gravity`) | What a `cover` crop keeps, or where `pad` places the image: `center` (default), `top`, `bottom`, `left`, `right`, `top-left`, `top-right`, `bottom-left`, `bottom-right`, or `smart` (content-aware: finds the subject from colour contrast, detail and skin tones; ignores sky, walls, floors and horizons). |
+| `fp` | Focal point `x,y` from 0 to 1, kept in the middle of a `cover` crop, e.g. `fp=0.5,0.2`. |
+| `crop` | `x,y,width,height` in pixels of the upright original, cut before resizing. Outside the image → 400. |
+| `fmt` | `jpeg`, `png`, `webp`, `gif`, or `auto` (WebP when the `Accept` header allows, else the original format; JPEG/PNG for WebP originals). `auto` responses carry `Vary: Accept`. |
+| `q` | Quality 1–100 for JPEG and lossy WebP (default 80, from `[images] quality`). |
+| `lossless` | `1` for lossless WebP. |
+| `bg` | Hex colour (`fff`, `ffffff`, `000000cc`) or `transparent`: pad bars and the backdrop for transparency in JPEG (default white). |
+| `dpr` | 1 to 4 in steps of 0.5: multiplies `w` and `h` (capped at `max_width`/`max_height`). |
+| `rot`, `flip` | Rotate 90/180/270 clockwise; mirror `h`, `v` or `hv`. |
+| `anim` | `0`: first frame of an animation only. |
 
-- Inputs: JPEG, PNG, GIF, WebP. Phone photos are rotated using their EXIF orientation.
-- WebP output is not available because the build uses no C libraries: `fmt=webp` returns JPEG (or PNG when the image has transparency) with an `X-Tijori-Note` header.
+- Unknown parameters are ignored (use `&v=2` to bust caches).
+- Inputs: JPEG, PNG, GIF, WebP (including animated). Photos are turned upright from EXIF orientation (JPEG and WebP).
+- WebP encoding uses libwebp translated to pure Go (no C libraries); release builds use `-tags nodynamic` so a system libwebp is never loaded.
+- Animations are resized frame by frame while frames × width × height ≤ 25 million pixels (or `max_pixels` if lower); bigger ones return the first frame with an `X-Tijori-Note` header. GIF ↔ WebP conversion keeps the animation.
 - Results are cached on disk with LRU eviction (`cache_size`). `X-Tijori-Cache: HIT` or `MISS` shows whether the cache was used. The cache key includes the ETag, so replacing an original creates new variants.
 - Public buckets: anyone can open the URL, and responses send `Cache-Control: public, max-age=31536000`. Add `&v=2` to bust browser caches. Private buckets need a presigned URL for the `/img/...` address.
 - Limits: `max_width`/`max_height` (4000), `max_pixels` (50,000,000), `max_input_size` (50MB). Optional `allowed_widths` stops people filling the cache with arbitrary sizes.
@@ -477,7 +487,7 @@ Every write goes to `.tmp` first, is fsynced and then renamed into place, so rea
 | "cannot listen on :9000" | The port is in use; set `listen = ":9100"`. |
 | Forgot the admin password | `sudo tijori admin password` (or change `TIJORI_ADMIN_PASSWORD`/`SERVICE_PASSWORD_ADMIN` and restart). |
 | Video processing "not installed" | Install ffmpeg or use the `-ffmpeg` image. |
-| `fmt=webp` returns JPEG | Expected: WebP output is not supported. |
+| A `cover` thumbnail cuts off the subject | Use `pos=smart`, `pos=top` (people), a focal point `fp=x,y`, or an exact `crop=x,y,w,h`. |
 
 ## 19. Guidance for AI assistants
 
@@ -486,6 +496,6 @@ Every write goes to `.tmp` first, is fsynced and then renamed into place, so rea
 - Public access is a per-bucket switch, not per object. Do not suggest bucket policies, IAM, `x-amz-acl` or `setVisibility` for access control.
 - Unsupported features are listed in section 5. Suggest the Tijori alternative: the bucket Public switch instead of a policy, `cors_origins` instead of PutBucketCors, backups instead of replication, new keys instead of versioning.
 - For big files use multipart (`Upload` from `@aws-sdk/lib-storage`, boto3 `upload_file`, Laravel streams). Behind Coolify a single request must finish within 60 seconds.
-- Use `/img/<bucket>/<key>?w=...` for thumbnails instead of resizing in the app.
+- Use `/img/<bucket>/<key>?w=...` for thumbnails instead of resizing in the app. For crops that keep the subject use `pos=smart` or a focal point `fp`; for modern formats use `fmt=auto` or `fmt=webp`. Do not claim WebP output is unsupported: it is supported since 1.1.0.
 - For backups on small setups, recommend the admin panel's Download backup and Restore from a backup file. For automation, recommend `[backup]` with a schedule to another disk, an SFTP server or an S3 service.
 - When debugging, ask for the exact error code (XML `<Code>` or JSON `error.code`) and the output of `tijori doctor`.

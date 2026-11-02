@@ -468,7 +468,7 @@ VIEWS.browse = async (main, parts) => {
     for (const f of res.files) {
       const display = query ? f.key.slice(prefix.length) : f.name;
       const thumb = isImage(f.type)
-        ? `<img loading="lazy" alt="" src="${API}/thumb?bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(f.key)}&w=88&h=88&fit=cover">`
+        ? `<img loading="lazy" alt="" src="${API}/thumb?bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(f.key)}&w=88&h=88&fit=cover&pos=smart&anim=0">`
         : icon(isVideo(f.type) ? "video" : "file");
       rows.push(`<li class="file" data-key="${esc(f.key)}" data-type="${esc(f.type)}"><div class="thumb">${thumb}</div>
         <div class="name"><button data-open>${esc(display)}</button>

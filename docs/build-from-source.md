@@ -21,7 +21,7 @@ ready binary.
 ```sh
 git clone https://github.com/getsettalk/Tijori.git
 cd Tijori
-CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o tijori ./cmd/tijori
+CGO_ENABLED=0 go build -tags nodynamic -trimpath -ldflags "-s -w" -o tijori ./cmd/tijori
 ./tijori version
 ```
 
@@ -31,7 +31,7 @@ On Windows (PowerShell):
 git clone https://github.com/getsettalk/Tijori.git
 cd Tijori
 $env:CGO_ENABLED = "0"
-go build -trimpath -ldflags "-s -w" -o tijori.exe ./cmd/tijori
+go build -tags nodynamic -trimpath -ldflags "-s -w" -o tijori.exe ./cmd/tijori
 .\tijori.exe version
 ```
 
@@ -40,8 +40,9 @@ What the flags do:
 | Flag | Why |
 | --- | --- |
 | `CGO_ENABLED=0` | No C code: the binary is fully static and runs on any Linux (Ubuntu, Debian, Alpine, BusyBox…) without extra libraries. |
+| `-tags nodynamic` | Uses Tijori's built-in WebP codec (libwebp translated to memory-safe Go). Without it, a WebP library installed on the machine is used when present. Release binaries always use the built-in one. |
 | `-trimpath` | Removes your folder names from the binary. |
-| `-ldflags "-s -w"` | Strips debug symbols: smaller file (about 9 MB). |
+| `-ldflags "-s -w"` | Strips debug symbols: smaller file (about 12 MB). |
 
 ## Build for another system (cross-compile)
 
@@ -49,12 +50,12 @@ Go builds for any system from any system. Set `GOOS` and `GOARCH`:
 
 | Target | Command |
 | --- | --- |
-| Linux, Intel/AMD (most VPS) | `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o tijori-linux-amd64 ./cmd/tijori` |
-| Linux, ARM (Raspberry Pi 4/5, Ampere, Graviton) | `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o tijori-linux-arm64 ./cmd/tijori` |
-| macOS, Apple Silicon | `GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o tijori-macos-arm64 ./cmd/tijori` |
-| macOS, Intel | `GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o tijori-macos-amd64 ./cmd/tijori` |
-| Windows | `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o tijori.exe ./cmd/tijori` |
-| Linux, 32-bit ARM (older Raspberry Pi) | `GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o tijori-linux-armv7 ./cmd/tijori` |
+| Linux, Intel/AMD (most VPS) | `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags nodynamic -trimpath -ldflags "-s -w" -o tijori-linux-amd64 ./cmd/tijori` |
+| Linux, ARM (Raspberry Pi 4/5, Ampere, Graviton) | `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -tags nodynamic -trimpath -ldflags "-s -w" -o tijori-linux-arm64 ./cmd/tijori` |
+| macOS, Apple Silicon | `GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -tags nodynamic -trimpath -ldflags "-s -w" -o tijori-macos-arm64 ./cmd/tijori` |
+| macOS, Intel | `GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -tags nodynamic -trimpath -ldflags "-s -w" -o tijori-macos-amd64 ./cmd/tijori` |
+| Windows | `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -tags nodynamic -trimpath -ldflags "-s -w" -o tijori.exe ./cmd/tijori` |
+| Linux, 32-bit ARM (older Raspberry Pi) | `GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -tags nodynamic -trimpath -ldflags "-s -w" -o tijori-linux-armv7 ./cmd/tijori` |
 
 Copy the file to the target machine, `chmod +x` it (Linux/macOS) and run it. The first five
 targets are tested on real machines for every release; others should work but are not tested.
@@ -71,7 +72,7 @@ To set your own label instead (this is how official releases are built):
 
 ```sh
 VERSION=1.0.1-custom
-go build -trimpath -o tijori \
+go build -tags nodynamic -trimpath -o tijori \
   -ldflags "-s -w -X github.com/getsettalk/Tijori/internal/version.Version=$VERSION -X github.com/getsettalk/Tijori/internal/version.Commit=$(git rev-parse --short HEAD) -X github.com/getsettalk/Tijori/internal/version.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   ./cmd/tijori
 ./tijori version
@@ -80,9 +81,9 @@ go build -trimpath -o tijori \
 ## Check your build
 
 ```sh
-go vet ./...
-go test ./...                                  # add -race on Linux/macOS
-go run golang.org/x/vuln/cmd/govulncheck@latest ./...   # known security issues
+go vet -tags nodynamic ./...
+go test -tags nodynamic ./...                  # add -race on Linux/macOS
+go run golang.org/x/vuln/cmd/govulncheck@latest -tags nodynamic ./...   # known security issues
 file tijori                                    # Linux: "statically linked"
 ./tijori doctor
 ```
@@ -128,5 +129,6 @@ this check for you.
 
 - **Can:** build for any `GOOS`/`GOARCH` Go supports; change the admin panel (plain HTML, CSS and
   JavaScript in `web/admin`, embedded at build time, no Node.js needed); add features.
-- **Can't (without work):** WebP *output* and libvips-style image processing need C libraries.
-  Tijori stays CGO-free so the binary keeps running everywhere.
+- **Can't (without work):** AVIF, HEIC and libvips-style processing would need C libraries or a
+  much larger binary. Tijori stays CGO-free so the binary keeps running everywhere; WebP works
+  because libwebp is included as Go code (translated from WebAssembly), not as a C library.

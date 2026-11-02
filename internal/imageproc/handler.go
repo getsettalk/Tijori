@@ -19,6 +19,11 @@ import (
 	"github.com/getsettalk/Tijori/internal/storage"
 )
 
+// renderVersion is part of every cache key. Raise it when the output of the
+// same request changes (a better crop, a new encoder), so upgraded servers
+// render images again instead of serving old copies from the cache.
+const renderVersion = "2"
+
 // Handler serves /img/<bucket>/<key>.
 type Handler struct {
 	Store    *storage.Store
@@ -92,6 +97,11 @@ func (h *Handler) ServeImage(w http.ResponseWriter, r *http.Request, bucket, key
 		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if p.Format == "auto" {
+		// The answer depends on the browser, so shared caches must keep apart.
+		w.Header().Set("Vary", "Accept")
+		p.AcceptWebP = strings.Contains(r.Header.Get("Accept"), "image/webp")
+	}
 	info, err := h.Store.StatObject(bucket, key)
 	if err != nil {
 		if errors.Is(err, storage.ErrNoSuchBucket) || errors.Is(err, storage.ErrNoSuchKey) {
@@ -106,7 +116,7 @@ func (h *Handler) ServeImage(w http.ResponseWriter, r *http.Request, bucket, key
 		return
 	}
 
-	sum := sha256.Sum256([]byte(bucket + "\x00" + key + "\x00" + info.ETag + "\x00" + p.String()))
+	sum := sha256.Sum256([]byte(renderVersion + "\x00" + bucket + "\x00" + key + "\x00" + info.ETag + "\x00" + p.String()))
 	name := hex.EncodeToString(sum[:])
 	etag := `"` + name[:32] + `"`
 	cacheControl := "public, max-age=31536000"
@@ -133,6 +143,8 @@ func (h *Handler) ServeImage(w http.ResponseWriter, r *http.Request, bucket, key
 				jsonError(w, http.StatusUnsupportedMediaType, err.Error())
 			case errors.Is(err, ErrTooManyPixels):
 				jsonError(w, http.StatusUnprocessableEntity, err.Error())
+			case errors.Is(err, ErrBadCrop):
+				jsonError(w, http.StatusBadRequest, err.Error())
 			default:
 				h.Log.Error("image processing failed", "bucket", bucket, "key", key, "err", err)
 				jsonError(w, http.StatusInternalServerError, "image processing failed")
@@ -146,8 +158,8 @@ func (h *Handler) ServeImage(w http.ResponseWriter, r *http.Request, bucket, key
 	hd.Set("Cache-Control", cacheControl)
 	hd.Set("ETag", etag)
 	hd.Set("X-Tijori-Cache", cacheState)
-	if p.Format == "webp" {
-		hd.Set("X-Tijori-Note", "webp output needs CGO; served "+out.ContentType+" instead")
+	if out.Note != "" {
+		hd.Set("X-Tijori-Note", out.Note)
 	}
 	w.WriteHeader(http.StatusOK)
 	if r.Method == http.MethodGet {
