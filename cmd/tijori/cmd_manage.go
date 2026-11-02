@@ -125,7 +125,7 @@ func cmdKey(args []string) error {
 		}
 		n, err := strconv.Atoi(pos[1])
 		if err != nil || n < -1 {
-			return errors.New("N must be -1 (no limit), 0 (server default) or a number of requests per second")
+			return errors.New("the limit must be -1 (no limit), 0 (server default) or a number of requests per second")
 		}
 		_, db, _, err := openOffline(*cfgPath)
 		if err != nil {
