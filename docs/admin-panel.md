@@ -27,10 +27,16 @@ Buckets defined in `tijori.toml` show "Settings come from tijori.toml" and can o
 ## Files
 
 - Folders, a breadcrumb trail and **search** within the current folder.
+- Each folder shows what it holds, subfolders included: for example
+  `2 folders · 128 files · 45.2 MB · updated 2 days ago`. The line under the breadcrumb shows the
+  same for the folder (or bucket) you are in. Very large folders show `200,000+ files`.
 - **Upload** with the button or by dragging files onto the page (with progress bars).
 - Click a file to **preview** it: images, video and audio play in place; PDFs open in a new tab.
 - **Download**, **Share link** (a presigned link valid for 15 minutes to 7 days),
-  **Copy public URL** (public buckets) and **Delete**.
+  **Copy public URL** (public buckets; the original file) and **Delete**.
+- **Image URL** (images only): choose width, height, fit, what to keep (smart, top…), format and
+  quality, see a live preview with the resulting format, size and file size, and copy the `/img/`
+  link. Private buckets get a signed link. See [Image resizing](images.md).
 - **New folder**, and deleting a folder removes everything inside it after you confirm.
 
 ## Keys

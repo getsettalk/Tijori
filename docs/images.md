@@ -12,6 +12,11 @@ response header `X-Tijori-Cache` says `HIT`).
 **You get back the format you uploaded:** JPEG stays JPEG, PNG stays PNG, WebP stays WebP and GIF
 stays GIF, and animated GIF and WebP files stay animated. Ask for another format with `fmt`.
 
+!!! tip "Build links in the admin panel"
+    In **Files**, the **Image URL** button next to an image lets you pick the size, crop and format,
+    shows a live preview and copies the finished link. **Copy public URL** is the original file
+    (the `/img/` part is what makes resizing happen).
+
 ## Quick recipes
 
 | You want | URL parameters |

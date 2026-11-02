@@ -332,7 +332,7 @@ URL: `<endpoint>/img/<bucket>/<key>?w=300`. The original is never changed. By de
 At `<endpoint>/_admin/`, log in as `admin`.
 - **Dashboard:** storage used, files, buckets, keys, a usage bar per bucket, endpoint, version with commit and build date, uptime, free disk, ffmpeg status, image cache and last backup.
 - **Buckets:** create, edit (Public, Quota, Max file size, Video processing) and delete. Buckets defined in `tijori.toml` are read-only here.
-- **Files:** folders, search, drag-and-drop upload with progress, preview (images, video, audio, PDF), download, share link (presigned, 15 minutes to 7 days), copy public URL, new folder, and delete (also whole folders). Files of 8 MB and more upload in parts of about 15 seconds each with retries, so proxies with time limits don't cut them.
+- **Files:** folders with their totals (subfolders, files, size, last change), search, drag-and-drop upload with progress, preview (images, video, audio, PDF), download, share link (presigned, 15 minutes to 7 days), copy public URL (the original file), an **Image URL** builder for images (size, fit, smart crop, format, live preview; signed for private buckets), new folder, and delete (also whole folders). Files of 8 MB and more upload in parts of about 15 seconds each with retries, so proxies with time limits don't cut them.
 - **Keys:** create (buckets and permission), list and revoke.
 - **Backup:**
   - **Download backup:** one `.tar.gz` with everything. It asks for the password again and uses a one-time link valid for 2 minutes.

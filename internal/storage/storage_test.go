@@ -330,3 +330,45 @@ func TestBuckets(t *testing.T) {
 		t.Fatal("bucket still exists")
 	}
 }
+
+func TestFolderStats(t *testing.T) {
+	s := newStore(t)
+	if err := s.CreateBucket("site"); err != nil {
+		t.Fatal(err)
+	}
+	put := func(key string, size int) {
+		t.Helper()
+		if _, err := s.PutObject("site", key, strings.NewReader(strings.Repeat("x", size)), PutOptions{Size: int64(size)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put("banners/a.jpg", 100)
+	put("banners/1/b.jpg", 250)
+	put("banners/1/2/c.jpg", 50)
+	put("logo.png", 7)
+	if _, err := s.PutObject("site", "banners/empty/", strings.NewReader(""), PutOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := s.FolderStats("site", "banners/", 1000)
+	if err != nil || st.Files != 3 || st.Bytes != 400 || st.Folders != 3 || st.Truncated || st.Modified.IsZero() {
+		t.Fatalf("banners: %+v %v", st, err)
+	}
+	if st, _ := s.FolderStats("site", "banners", 1000); st.Files != 3 {
+		t.Fatalf("prefix without slash: %+v", st)
+	}
+	if st, _ := s.FolderStats("site", "", 1000); st.Files != 4 || st.Bytes != 407 {
+		t.Fatalf("whole bucket: %+v", st)
+	}
+	if st, _ := s.FolderStats("site", "banners/", 2); !st.Truncated || st.Files+st.Folders > 2 {
+		t.Fatalf("limit: %+v", st)
+	}
+	if st, err := s.FolderStats("site", "nothing/", 1000); err != nil || st.Files != 0 {
+		t.Fatalf("missing folder: %+v %v", st, err)
+	}
+	if _, err := s.FolderStats("site", "../", 1000); err == nil {
+		t.Fatal("prefix escaping the bucket accepted")
+	}
+	if _, err := s.FolderStats("nope", "", 1000); !errors.Is(err, ErrNoSuchBucket) {
+		t.Fatalf("missing bucket: %v", err)
+	}
+}

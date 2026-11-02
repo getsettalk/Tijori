@@ -235,6 +235,8 @@ func (h *Handler) api(w http.ResponseWriter, r *http.Request, p string) {
 		h.deleteBucket(w, r, strings.TrimPrefix(p, "/buckets/"))
 	case route == "GET /objects":
 		h.listObjects(w, r)
+	case route == "GET /folderstats":
+		h.folderStats(w, r)
 	case route == "PUT /object":
 		h.upload(w, r)
 	case route == "POST /uploads":

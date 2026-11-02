@@ -23,6 +23,10 @@ const STRINGS = {
     upload: "Upload", newFolder: "New folder", search: "Search this folder", dropHere: "Drop files here to upload, or",
     chooseFiles: "choose files", emptyFolder: "This folder is empty.", download: "Download", copyUrl: "Copy public URL",
     shareLink: "Share link", expiresIn: "Link works for", copy: "Copy", copied: "Copied", generate: "Create link",
+    imageUrl: "Image URL", width: "Width", height: "Height", fit: "Fit", keep: "Keep", format: "Format", quality: "Quality",
+    imagePublicHint: "Anyone can open this link. The original stays untouched; this version is made on first use and then cached.",
+    imagePrivateHint: "This bucket is private, so the link is signed and stops working after the time above (or when its key is revoked).",
+    imageMore: "More options (focal point, exact crop, Retina, rotate):",
     confirmDelete: "Delete {name}? This cannot be undone.", confirmFolder: "Delete the folder {name} and everything in it?",
     newKey: "New key", permission: "Permission", allBuckets: "All buckets", revoke: "Revoke",
     confirmRevoke: "Revoke {name}? Apps using it will stop working.", secretOnce: "Copy the secret now. It is shown only once.",
@@ -442,7 +446,7 @@ VIEWS.browse = async (main, parts) => {
   const segs = prefix.split("/").filter(Boolean);
   const crumbs = [`<a href="#/files">${t("files")}</a>`, `<a href="${browseHash(bucket, "")}">${esc(bucket)}</a>`]
     .concat(segs.map((s, i) => `<a href="${browseHash(bucket, segs.slice(0, i + 1).join("/"))}">${esc(s)}</a>`)).join(" / ");
-  main.innerHTML = `<div class="crumbs">${crumbs}</div>
+  main.innerHTML = `<div class="crumbs">${crumbs}</div><div class="fsum small muted" id="fsum"></div>
     <div class="toolbar"><input type="search" id="q" placeholder="${t("search")}" aria-label="${t("search")}">
       ${ro() ? "" : `<button class="btn" id="mkdir">+ ${t("newFolder")}</button>
       <label class="btn primary" for="pick">${t("upload")}</label><input type="file" id="pick" multiple class="hidden">`}</div>
@@ -462,7 +466,7 @@ VIEWS.browse = async (main, parts) => {
     for (const f of res.folders) {
       const name = f.slice(prefix.length).replace(/\/$/, "");
       rows.push(`<li class="file folder"><div class="thumb">${icon("folder")}</div><div class="name">
-        <a href="${browseHash(bucket, f)}">${esc(name)}</a><div class="meta">folder</div></div>
+        <a href="${browseHash(bucket, f)}">${esc(name)}</a><div class="meta" data-fstats="${esc(f)}">folder</div></div>
         <div class="actions">${ro() ? "" : `<button class="btn small danger" data-delfolder="${esc(f)}">${t("delete")}</button>`}</div></li>`);
     }
     for (const f of res.files) {
@@ -476,14 +480,21 @@ VIEWS.browse = async (main, parts) => {
         <div class="actions"><a class="btn small" href="${objURL(bucket, f.key)}" download>${t("download")}</a>
           <button class="btn small" data-share>${t("shareLink")}</button>
           ${binfo.public_read ? `<button class="btn small" data-public>${t("copyUrl")}</button>` : ""}
+          ${isImage(f.type) ? `<button class="btn small" data-imgurl>${t("imageUrl")}</button>` : ""}
           ${ro() ? "" : `<button class="btn small danger" data-del>${t("delete")}</button>`}</div></li>`);
     }
     listEl.insertAdjacentHTML("beforeend", rows.join(""));
     if (!listEl.children.length) listEl.innerHTML = `<li class="empty">${t("emptyFolder")}</li>`;
+    folderStats(listEl, bucket);
     next = res.next || null;
     $("#more-wrap", main).classList.toggle("hidden", !next);
   }
   await load("");
+  // What this folder (or the whole bucket) holds, counted like the folder rows.
+  const fsum = $("#fsum", main);
+  api("GET", `/folderstats?bucket=${encodeURIComponent(bucket)}&prefix=${encodeURIComponent(prefix)}`)
+    .then((st) => { fsum.textContent = `${prefix ? "In this folder" : "In this bucket"}: ${folderSummary(st)}`; })
+    .catch(() => {});
 
   let timer;
   $("#q", main).addEventListener("input", (e) => {
@@ -504,8 +515,9 @@ VIEWS.browse = async (main, parts) => {
     const li = e.target.closest("li[data-key]");
     if (!li) return;
     const key = li.dataset.key, type = li.dataset.type;
-    if (e.target.closest("[data-open]")) preview(bucket, key, type);
+    if (e.target.closest("[data-open]")) preview(bucket, key, type, !!binfo.public_read);
     else if (e.target.closest("[data-share]")) shareDialog(bucket, key);
+    else if (e.target.closest("[data-imgurl]")) imageDialog(bucket, key, !!binfo.public_read);
     else if (e.target.closest("[data-public]")) {
       try { const r = await api("POST", "/presign", { bucket, key, method: "GET", expires: 60 }); copyText(r.public_url); }
       catch (ex) { fail(ex); }
@@ -643,16 +655,140 @@ async function uploadFiles(bucket, prefix, files, done) {
   done();
 }
 
-function preview(bucket, key, type) {
+// ago formats a time as "3 days ago".
+function ago(iso) {
+  const d = new Date(iso);
+  if (isNaN(d) || d.getFullYear() < 2000) return "";
+  const secs = (Date.now() - d) / 1000;
+  if (secs < 60) return "just now";
+  const rtf = new Intl.RelativeTimeFormat(lang, { numeric: "auto" });
+  for (const [unit, n] of [["year", 31536000], ["month", 2592000], ["week", 604800], ["day", 86400], ["hour", 3600], ["minute", 60]]) {
+    if (secs >= n) return rtf.format(-Math.floor(secs / n), unit);
+  }
+  return "just now";
+}
+
+// folderSummary turns folder stats into "2 folders · 14 files · 3.2 MB · updated 2 days ago".
+function folderSummary(st) {
+  if (!st.files && !st.folders) return "Empty";
+  const count = (n, one, many) => `${Number(n).toLocaleString()}${st.truncated ? "+" : ""} ${n === 1 && !st.truncated ? one : many}`;
+  const parts = [];
+  if (st.folders) parts.push(count(st.folders, "folder", "folders"));
+  parts.push(count(st.files, "file", "files"), bytes(st.bytes) + (st.truncated ? "+" : ""));
+  const when = st.modified && ago(st.modified);
+  if (when) parts.push(`updated ${when}`);
+  return parts.join(" · ");
+}
+
+// folderStats fills in each folder row's summary, a few at a time.
+async function folderStats(root, bucket) {
+  const els = $$("[data-fstats]:not([data-done])", root);
+  const hash = location.hash;
+  let i = 0;
+  const worker = async () => {
+    while (i < els.length && location.hash === hash) {
+      const el = els[i++];
+      el.dataset.done = "1";
+      try {
+        const st = await api("GET", `/folderstats?bucket=${encodeURIComponent(bucket)}&prefix=${encodeURIComponent(el.dataset.fstats)}`);
+        el.textContent = folderSummary(st);
+        el.title = "Including subfolders";
+      } catch (e) { /* keep "folder" */ }
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+}
+
+function preview(bucket, key, type, isPublic) {
   const src = objURL(bucket, key, "&inline=1");
   let body;
   if (isImage(type) || type === "image/svg+xml") body = `<img src="${src}" alt="${esc(key)}">`;
   else if (isVideo(type)) body = `<video src="${src}" controls playsinline preload="metadata"></video>`;
   else if (isAudio(type)) body = `<audio src="${src}" controls></audio>`;
   else body = `<div class="empty">${esc(type || "file")}<br><br><a class="btn" href="${src}" target="_blank" rel="noopener">${t("browse")}</a></div>`;
+  const imgBtn = isImage(type) ? `<button class="btn" data-imgurl>${t("imageUrl")}</button>` : "";
   modal(`<h2 class="mono">${esc(key)}</h2><div class="preview">${body}</div>
-    <div class="foot"><a class="btn" href="${objURL(bucket, key)}" download>${t("download")}</a>
-    <button class="btn primary" data-close="no">${t("close")}</button></div>`, { wide: true });
+    <div class="foot">${imgBtn}<a class="btn" href="${objURL(bucket, key)}" download>${t("download")}</a>
+    <button class="btn primary" data-close="no">${t("close")}</button></div>`, {
+    wide: true,
+    onMount(m, done) {
+      const b = $("[data-imgurl]", m);
+      if (b) b.addEventListener("click", () => { done(null); imageDialog(bucket, key, isPublic); });
+    },
+  });
+}
+
+// imageDialog builds a /img/ link for resized, cropped or converted copies,
+// with a live preview of the result.
+function imageDialog(bucket, key, isPublic) {
+  const sel = (name, opts, value) => `<select id="i-${name}" name="${name}">${opts.map(([v, l]) =>
+    `<option value="${v}" ${v === value ? "selected" : ""}>${l}</option>`).join("")}</select>`;
+  const fits = [["contain", "Fit inside"], ["cover", "Fill and crop"], ["pad", "Fit inside, add bars"], ["fill", "Stretch to size"]];
+  const keeps = [["smart", "Smart: the subject"], ["center", "Centre"], ["top", "Top"], ["bottom", "Bottom"], ["left", "Left"], ["right", "Right"]];
+  const formats = [["", "Same as original"], ["auto", "Auto: WebP when supported"], ["webp", "WebP"], ["jpeg", "JPEG"], ["png", "PNG"]];
+  const expiries = [["604800", "7 days"], ["86400", "1 day"], ["3600", "1 hour"]];
+  modal(`<h2>${t("imageUrl")}</h2><p class="mono small">${esc(bucket)}/${esc(key)}</p>
+    <form class="imgform" novalidate>
+      <div class="row"><div class="field"><label for="i-w">${t("width")}</label><input id="i-w" name="w" type="number" min="1" placeholder="auto" value="800"></div>
+        <div class="field"><label for="i-h">${t("height")}</label><input id="i-h" name="h" type="number" min="1" placeholder="auto"></div></div>
+      <div class="row"><div class="field"><label for="i-fit">${t("fit")}</label>${sel("fit", fits, "contain")}</div>
+        <div class="field"><label for="i-pos">${t("keep")}</label>${sel("pos", keeps, "smart")}</div></div>
+      <div class="row"><div class="field"><label for="i-fmt">${t("format")}</label>${sel("fmt", formats, "auto")}</div>
+        <div class="field"><label for="i-q">${t("quality")}</label><input id="i-q" name="q" type="number" min="1" max="100" placeholder="80"></div></div>
+      ${isPublic ? "" : `<div class="field"><label for="i-exp">${t("expiresIn")}</label>${sel("exp", expiries, "604800")}</div>`}
+    </form>
+    <div class="imgpreview"><img alt=""><div class="small muted" id="imeta"></div></div>
+    <div class="error-box hidden"></div>
+    <div class="secret"><code></code><button class="btn small" data-copyurl>${t("copy")}</button></div>
+    <p class="hint">${isPublic ? t("imagePublicHint") : t("imagePrivateHint")}
+      ${t("imageMore")} <a href="https://getsettalk.github.io/Tijori/images/" target="_blank" rel="noopener noreferrer">docs</a></p>
+    <div class="foot"><button class="btn primary" data-close="no">${t("close")}</button></div>`, {
+    wide: true,
+    onMount(m) {
+      const form = $("form", m), img = $(".imgpreview img", m), meta = $("#imeta", m), err = $(".error-box", m), code = $(".secret code", m);
+      let timer, blobURL = "", seq = 0;
+      const params = () => {
+        const q = new URLSearchParams();
+        const fit = form.elements.fit.value;
+        for (const name of ["w", "h"]) if (form.elements[name].value) q.set(name, form.elements[name].value);
+        if (fit !== "contain") q.set("fit", fit);
+        if ((fit === "cover" || fit === "pad") && form.elements.pos.value !== "center") q.set("pos", form.elements.pos.value);
+        if (form.elements.fmt.value) q.set("fmt", form.elements.fmt.value);
+        if (form.elements.q.value) q.set("q", form.elements.q.value);
+        return q.toString();
+      };
+      const update = async () => {
+        const my = ++seq, image = params();
+        const fit = form.elements.fit.value;
+        form.elements.pos.disabled = fit !== "cover" && fit !== "pad";
+        try {
+          const expires = isPublic ? 604800 : +form.elements.exp.value;
+          const r = await api("POST", "/presign", { bucket, key, method: "GET", expires, img: true, image });
+          if (my !== seq) return;
+          err.classList.add("hidden");
+          code.textContent = r.public_url || r.url;
+          // Preview through the admin API, asking like a browser would.
+          const res = await fetch(`${API}/thumb?bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(key)}&${image}`,
+            { headers: { Accept: "image/avif,image/webp,image/*" }, credentials: "same-origin" });
+          if (!res.ok) throw Object.assign(new Error(uploadError(res.status, await res.text())), { status: res.status });
+          const blob = await res.blob();
+          if (my !== seq) return;
+          if (blobURL) URL.revokeObjectURL(blobURL);
+          blobURL = URL.createObjectURL(blob);
+          img.onload = () => { meta.textContent = `${(blob.type.split("/")[1] || "").toUpperCase()} · ${img.naturalWidth} × ${img.naturalHeight} · ${bytes(blob.size)}`; };
+          img.src = blobURL;
+        } catch (e) {
+          if (my !== seq) return;
+          err.textContent = e.message;
+          err.classList.remove("hidden");
+        }
+      };
+      form.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(update, 300); });
+      form.addEventListener("submit", (e) => e.preventDefault());
+      $("[data-copyurl]", m).addEventListener("click", () => copyText(code.textContent));
+      update();
+    },
+  });
 }
 
 function shareDialog(bucket, key) {

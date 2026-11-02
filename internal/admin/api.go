@@ -15,6 +15,7 @@ import (
 
 	"github.com/getsettalk/Tijori/internal/auth"
 	"github.com/getsettalk/Tijori/internal/config"
+	"github.com/getsettalk/Tijori/internal/imageproc"
 	"github.com/getsettalk/Tijori/internal/s3api"
 	"github.com/getsettalk/Tijori/internal/state"
 	"github.com/getsettalk/Tijori/internal/storage"
@@ -317,6 +318,23 @@ func toFileView(o storage.ObjectInfo) fileView {
 	return fileView{Key: o.Key, Name: name, Size: o.Size, Modified: o.LastModified.Format(time.RFC3339), Type: o.ContentType}
 }
 
+// folderStatsLimit caps how many entries one folder summary may visit.
+const folderStatsLimit = 200_000
+
+// folderStats sums the files under a folder for the file browser.
+func (h *Handler) folderStats(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	st, err := h.Store.FolderStats(q.Get("bucket"), q.Get("prefix"), folderStatsLimit)
+	switch {
+	case errors.Is(err, storage.ErrNoSuchBucket):
+		apiError(w, 404, "bucket not found")
+	case err != nil:
+		apiError(w, 400, err.Error())
+	default:
+		writeJSON(w, 200, st)
+	}
+}
+
 func (h *Handler) listObjects(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	bucket, prefix, search := q.Get("bucket"), q.Get("prefix"), strings.ToLower(strings.TrimSpace(q.Get("q")))
@@ -616,12 +634,17 @@ func objectURL(base, bucket, key string) string {
 	return base + "/" + bucket + "/" + strings.Join(parts, "/")
 }
 
+// presign creates a link to an object. With img set, the link points at
+// the /img/ route instead, with image holding resize parameters such as
+// "w=800&fmt=auto", so the admin panel can hand out resized-image URLs.
 func (h *Handler) presign(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Bucket  string `json:"bucket"`
 		Key     string `json:"key"`
 		Method  string `json:"method"`
 		Expires int    `json:"expires"`
+		Img     bool   `json:"img"`
+		Image   string `json:"image"`
 	}
 	if err := decodeJSON(r, &in); err != nil {
 		apiError(w, 400, "bad request")
@@ -639,12 +662,34 @@ func (h *Handler) presign(w http.ResponseWriter, r *http.Request) {
 		apiError(w, 400, "expiry must be between 1 second and 7 days")
 		return
 	}
+	target := objectURL(h.endpoint(r), in.Bucket, in.Key)
+	if in.Img || in.Image != "" {
+		if h.Images == nil {
+			apiError(w, 409, "image processing is turned off ([images] enabled = false)")
+			return
+		}
+		q, err := url.ParseQuery(in.Image)
+		if err == nil {
+			_, err = imageproc.ParseParams(q, h.Images.Limits)
+		}
+		if err != nil || in.Method != http.MethodGet {
+			if err == nil {
+				err = errors.New("image links are for GET only")
+			}
+			apiError(w, 400, err.Error())
+			return
+		}
+		target = objectURL(h.endpoint(r)+"/img", in.Bucket, in.Key)
+		if enc := q.Encode(); enc != "" {
+			target += "?" + enc
+		}
+	}
 	k, ok := h.signingKey(in.Bucket, in.Method)
 	if !ok {
 		apiError(w, 409, "no access key can sign this link; create a key for bucket "+in.Bucket+" first")
 		return
 	}
-	u, err := auth.Presign(auth.PresignOptions{Method: in.Method, URL: objectURL(h.endpoint(r), in.Bucket, in.Key),
+	u, err := auth.Presign(auth.PresignOptions{Method: in.Method, URL: target,
 		AccessKey: k.AccessKey, SecretKey: k.SecretKey, Region: h.Cfg.Region, Expires: exp})
 	if err != nil {
 		apiError(w, 500, err.Error())
@@ -652,7 +697,7 @@ func (h *Handler) presign(w http.ResponseWriter, r *http.Request) {
 	}
 	out := map[string]any{"url": u, "expires_at": time.Now().Add(exp).Format(time.RFC3339), "signed_with": k.AccessKey}
 	if h.Quota.Settings(in.Bucket).PublicRead {
-		out["public_url"] = objectURL(h.endpoint(r), in.Bucket, in.Key)
+		out["public_url"] = target
 	}
 	writeJSON(w, 200, out)
 }

@@ -194,3 +194,12 @@ pre.code { background: var(--surface-2); border: 1px solid var(--border); border
 .login .btn.primary { width: 100%; margin-top: 4px; }
 .drop label { display: inline; font-size: inherit; color: inherit; margin: 0; cursor: pointer; }
 .drop label a { text-decoration: underline; }
+
+/* Image URL dialog */
+.imgpreview { margin: 14px 0 10px; padding: 12px; border-radius: 12px; text-align: center;
+  background: repeating-conic-gradient(var(--surface-2) 0 25%, var(--surface) 0 50%) 0 0 / 16px 16px; }
+.imgpreview img { display: block; max-width: 100%; max-height: 220px; margin: 0 auto 8px; }
+.imgform .row select:disabled { opacity: .5; }
+
+/* Folder summary under the breadcrumb */
+.fsum { margin: -6px 0 12px; min-height: 1.2em; }

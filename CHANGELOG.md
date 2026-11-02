@@ -6,6 +6,16 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Admin panel: **Image URL** button for images in the file browser (and in the preview). Pick width,
+  height, fit, what to keep and format, see a live preview with format, pixel size and file size,
+  and copy the `/img/` link. Private buckets get a signed link. The admin API's presign endpoint
+  accepts `img` and `image` for this.
+- Admin panel: every folder shows what it holds, subfolders included
+  (`2 folders · 128 files · 45.2 MB · updated 2 days ago`), and the line under the breadcrumb shows
+  the totals of the current folder or bucket. Counting stops at 200,000 entries per folder
+  (`200,000+ files`) so huge folders stay fast.
+
 ## [1.1.0] - 2026-11-02
 
 ### Added

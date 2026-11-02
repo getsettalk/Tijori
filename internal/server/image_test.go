@@ -2,11 +2,13 @@ package server
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/jpeg"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -138,5 +140,78 @@ func TestImageRouteKeepsWebP(t *testing.T) {
 	// Crop errors are explained.
 	if resp, body := get(e.url+"/img/pics/photo.webp?crop=900,900,10,10", ""); resp.StatusCode != 400 || !bytes.Contains(body, []byte("outside")) {
 		t.Fatalf("crop outside: %d %s", resp.StatusCode, body)
+	}
+}
+
+func TestAdminImageURL(t *testing.T) {
+	e := startServer(t, func(c *config.Config) {
+		c.Admin.Password = "admin-password"
+		c.Buckets["pics"] = config.BucketConfig{PublicRead: true}
+		c.Buckets["priv"] = config.BucketConfig{}
+	})
+	img := image.NewRGBA(image.Rect(0, 0, 400, 300))
+	for i := range img.Pix {
+		img.Pix[i] = uint8(i)
+	}
+	var buf bytes.Buffer
+	_ = jpeg.Encode(&buf, img, nil)
+	for _, b := range []string{"pics", "priv"} {
+		if _, err := e.s3.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String(b), Key: aws.String("summer/my photo.jpg"), Body: bytes.NewReader(buf.Bytes())}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a := newAdminClient(t, e)
+	if st := a.login("admin", "admin-password"); st != 200 {
+		t.Fatalf("login: %d", st)
+	}
+	link := func(bucket, params string) (int, map[string]any) {
+		return a.do("POST", "/presign", map[string]any{"bucket": bucket, "key": "summer/my photo.jpg", "method": "GET", "expires": 600, "img": true, "image": params}, true)
+	}
+	fetch := func(u string) (string, int) {
+		resp, err := http.Get(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		cfg, format, err := image.DecodeConfig(resp.Body)
+		if err != nil || resp.StatusCode != 200 {
+			t.Fatalf("GET %s: %d %v", u, resp.StatusCode, err)
+		}
+		return format, cfg.Width
+	}
+
+	// Public bucket: a plain /img/ link anyone can open.
+	st, out := link("pics", "w=100&fmt=webp")
+	want := e.url + "/img/pics/summer/my%20photo.jpg?fmt=webp&w=100"
+	if st != 200 || out["public_url"] != want {
+		t.Fatalf("public image link: %d %v", st, out)
+	}
+	if f, w := fetch(want); f != "webp" || w != 100 {
+		t.Fatalf("public image: %s %d", f, w)
+	}
+	if _, out := link("pics", ""); out["public_url"] != e.url+"/img/pics/summer/my%20photo.jpg" {
+		t.Fatalf("no parameters: %v", out)
+	}
+	// Private bucket: a signed link.
+	st, out = link("priv", "w=120&h=120&fit=cover&pos=smart")
+	u, _ := out["url"].(string)
+	if st != 200 || out["public_url"] != nil || !strings.Contains(u, "/img/priv/") || !strings.Contains(u, "X-Amz-Signature=") {
+		t.Fatalf("private image link: %d %v", st, out)
+	}
+	if f, w := fetch(u); f != "jpeg" || w != 120 {
+		t.Fatalf("private image: %s %d", f, w)
+	}
+	// Mistakes are explained before anyone uses the link.
+	if st, out := link("pics", "w=abc"); st != 400 || !strings.Contains(fmt.Sprint(out["error"]), "w must be") {
+		t.Fatalf("bad parameters: %d %v", st, out)
+	}
+
+	// The file browser's folder summary.
+	st, out = a.do("GET", "/folderstats?bucket=pics&prefix=summer/", nil, false)
+	if st != 200 || out["files"].(float64) != 1 || out["bytes"].(float64) != float64(buf.Len()) || out["truncated"] != false {
+		t.Fatalf("folder stats: %d %v", st, out)
+	}
+	if st, _ := a.do("GET", "/folderstats?bucket=pics&prefix=../", nil, false); st != 400 {
+		t.Fatalf("escaping prefix: %d", st)
 	}
 }
