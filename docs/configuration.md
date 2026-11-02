@@ -64,6 +64,7 @@ Buckets listed here are created at startup. Their settings can then only be chan
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `public_read` | `false` | Anyone may download files (never upload). |
+| `public_prefixes` | `[]` | Only these folders are public, e.g. `["avatars/", "products/"]`. See below. |
 | `max_size` | | Bucket quota. |
 | `max_object_size` | | Largest file in this bucket. |
 | `video_process` | `false` | Make thumbnails and smaller copies of videos. |
@@ -71,6 +72,62 @@ Buckets listed here are created at startup. Their settings can then only be chan
 Environment form: `TIJORI_BUCKETS_<NAME>_<SETTING>`, where `_` in the name
 means `-`. Example: `TIJORI_BUCKETS_MY_PHOTOS_PUBLIC_READ=true` for bucket
 `my-photos`. Shortcut: `TIJORI_PUBLIC_BUCKETS=photos,assets`.
+
+### Public folders
+
+Often only part of a bucket should be public: product photos yes, invoices
+no. List those folders in `public_prefixes`:
+
+```toml
+[buckets.shop]
+public_prefixes = ["products/", "avatars/"]
+```
+
+- Anyone may download files under `products/` and `avatars/`, including
+  subfolders (`products/2026/shoe.jpg`). Everything else stays private.
+- A folder name matches whole folders only: `products/` does not make
+  `products-old/` public.
+- Anonymous users can never list the bucket, upload or delete, just as with
+  `public_read`.
+- Resized images (`/img/...`) follow the same rule.
+- Up to 20 folders per bucket. Names like `../` or `.tijori` are refused.
+- `public_read = true` still makes the whole bucket public and wins.
+
+Environment form: `TIJORI_BUCKETS_SHOP_PUBLIC_PREFIXES=products/,avatars/`.
+Buckets created in the admin panel or with `tijori bucket create
+--public-folders` get the same setting without a config file.
+
+## `[limits]`
+
+Request limits stop a leaked key or a single busy client from overloading the
+server. Both are off by default.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `key_rps` | `0` | Requests per second for each access key. `0` = no limit. |
+| `anonymous_rps` | `0` | Requests per second for each client address without a key (public files, public folders, `/img/` on public buckets). `0` = no limit. |
+
+```toml
+[limits]
+key_rps = 50
+anonymous_rps = 20
+```
+
+- A client may briefly go up to twice the limit (a burst), then is slowed to
+  the limit.
+- Too many S3 requests get `503 SlowDown` with a `Retry-After` header. The
+  AWS SDKs, boto3 and Laravel retry this on their own. `/img/` answers
+  `429 Too Many Requests`.
+- Anonymous clients are counted by address; IPv6 addresses by their `/64`
+  network (one home or server). Behind a proxy this needs
+  `trust_proxy_headers` (on by default).
+- One key can have its own limit: admin panel → **Access keys** → **Rate limit**,
+  or `tijori key limit ACCESS_KEY 200`. `-1` means no limit for that key, for
+  example a backup job.
+- Health checks, metrics and the admin panel are never limited.
+- With `metrics = true`, `tijori_s3_throttled_total` counts refused requests.
+
+Environment: `TIJORI_LIMITS_KEY_RPS=50`, `TIJORI_LIMITS_ANONYMOUS_RPS=20`.
 
 ## `[images]`
 
@@ -126,6 +183,13 @@ max_object_size = "20MB"
 [buckets.videos]
 video_process = true
 
+[buckets.shop]
+public_prefixes = ["products/"]
+
+[limits]
+key_rps = 50
+anonymous_rps = 20
+
 [images]
 max_width = 2000
 cache_size = "500MB"
@@ -142,3 +206,15 @@ keep = 7
 ```
 
 Check a config with `tijori doctor`. Restart Tijori after changing the file.
+
+## Access log
+
+Every request is logged with method, path, status, `bytes` sent, `bytes_in`
+(upload size), `ms` and the client address. S3 and `/img/` requests also log
+the `bucket`, the file `key` and the `access_key` that signed the request, or
+`anonymous`. Secret keys are never logged. With `log_format = "json"` each
+request is one JSON line, ready for Loki, Elasticsearch or `jq`:
+
+```bash
+journalctl -u tijori -o cat | jq 'select(.bucket == "photos" and .status >= 400)'
+```

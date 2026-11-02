@@ -34,6 +34,9 @@ type AccessKey struct {
 	Buckets    []string  `json:"buckets"` // "*" means every bucket
 	Permission string    `json:"permission"`
 	CreatedAt  time.Time `json:"created_at"`
+	// RateLimit is this key's requests per second: 0 uses the server
+	// default ([limits] key_rps), -1 means no limit.
+	RateLimit int `json:"rate_limit,omitempty"`
 	// FromEnv marks the root key supplied by environment variables; it is
 	// never written to disk.
 	FromEnv bool `json:"-"`

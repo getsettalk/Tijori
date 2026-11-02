@@ -37,3 +37,8 @@ only counts the difference in size.
 
 Usage is counted on every upload and delete and recounted from disk at startup.
 If you changed files on disk by hand, run `tijori usage --recalc`.
+
+## Request limits
+
+Quotas limit space. To limit how many requests a key or a visitor may send per
+second, see [`[limits]`](configuration.md#limits).

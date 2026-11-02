@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -54,6 +55,7 @@ type Config struct {
 	Images  ImagesConfig            `toml:"images"`
 	Video   VideoConfig             `toml:"video"`
 	Backup  BackupConfig            `toml:"backup"`
+	Limits  LimitsConfig            `toml:"limits"`
 
 	// File is the config file that was loaded, empty when running on
 	// defaults and environment variables only.
@@ -71,10 +73,23 @@ type AdminConfig struct {
 }
 
 type BucketConfig struct {
-	PublicRead    bool `toml:"public_read"`
-	MaxSize       Size `toml:"max_size"`
-	MaxObjectSize Size `toml:"max_object_size"`
-	VideoProcess  bool `toml:"video_process"`
+	PublicRead bool `toml:"public_read"`
+	// PublicPrefixes makes only these folders readable by anyone, for
+	// example ["public/", "avatars/"], while the rest stays private.
+	PublicPrefixes []string `toml:"public_prefixes"`
+	MaxSize        Size     `toml:"max_size"`
+	MaxObjectSize  Size     `toml:"max_object_size"`
+	VideoProcess   bool     `toml:"video_process"`
+}
+
+// LimitsConfig sets request rate limits. 0 means no limit.
+type LimitsConfig struct {
+	// KeyRPS is the default number of requests per second for each access
+	// key; a key's own limit (set in the admin panel) takes precedence.
+	KeyRPS int `toml:"key_rps"`
+	// AnonymousRPS limits requests without a key (public files, /img/) per
+	// client address (IPv6 addresses are grouped by /64).
+	AnonymousRPS int `toml:"anonymous_rps"`
 }
 
 type ImagesConfig struct {
@@ -222,10 +237,19 @@ func (c *Config) Validate() error {
 	if ValidBucketName(first) {
 		return fmt.Errorf("admin.path %q could clash with a bucket name; start it with an underscore, for example /_admin", c.Admin.Path)
 	}
-	for name := range c.Buckets {
+	for name, b := range c.Buckets {
 		if !ValidBucketName(name) {
 			return fmt.Errorf("[buckets.%s]: invalid bucket name (use 3-63 lowercase letters, digits, dots or hyphens)", name)
 		}
+		prefixes, err := NormalizePrefixes(b.PublicPrefixes)
+		if err != nil {
+			return fmt.Errorf("[buckets.%s] public_prefixes: %w", name, err)
+		}
+		b.PublicPrefixes = prefixes
+		c.Buckets[name] = b
+	}
+	if c.Limits.KeyRPS < 0 || c.Limits.AnonymousRPS < 0 {
+		return errors.New("[limits] key_rps and anonymous_rps must be 0 (no limit) or more")
 	}
 	if c.PublicURL != "" {
 		u, err := url.Parse(c.PublicURL)
@@ -565,4 +589,50 @@ func (c *Config) TOML() string {
 	var b strings.Builder
 	_ = toml.NewEncoder(&b).Encode(c)
 	return b.String()
+}
+
+// MaxPublicPrefixes is how many public folders a bucket may have.
+const MaxPublicPrefixes = 20
+
+// NormalizePrefixes checks public folder prefixes and puts them in one
+// form: no leading "/", one trailing "/", no duplicates, sorted. Prefixes
+// with "..", ".", empty parts, backslashes or reserved names are refused.
+func NormalizePrefixes(in []string) ([]string, error) {
+	var out []string
+	for _, p := range in {
+		p = strings.TrimLeft(strings.TrimSpace(p), "/")
+		if p == "" {
+			continue
+		}
+		if !strings.HasSuffix(p, "/") {
+			p += "/"
+		}
+		if len(p) > 512 || strings.ContainsAny(p, "\\\x00") {
+			return nil, fmt.Errorf("%q is not a valid folder", p)
+		}
+		for _, part := range strings.Split(strings.TrimSuffix(p, "/"), "/") {
+			if part == "" || part == "." || part == ".." || strings.HasPrefix(strings.ToLower(part), ".tijori") {
+				return nil, fmt.Errorf("%q is not a valid folder", p)
+			}
+		}
+		if !slices.Contains(out, p) {
+			out = append(out, p)
+		}
+	}
+	if len(out) > MaxPublicPrefixes {
+		return nil, fmt.Errorf("at most %d public folders", MaxPublicPrefixes)
+	}
+	slices.Sort(out)
+	return out, nil
+}
+
+// MatchPrefix reports whether key lies in one of the folders. With fold,
+// the match ignores letter case, as the disk does on macOS and Windows.
+func MatchPrefix(prefixes []string, key string, fold bool) bool {
+	for _, p := range prefixes {
+		if len(key) > len(p) && (key[:len(p)] == p || fold && strings.EqualFold(key[:len(p)], p)) {
+			return true
+		}
+	}
+	return false
 }

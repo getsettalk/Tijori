@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -19,7 +20,9 @@ import (
 	"time"
 
 	"github.com/getsettalk/Tijori/internal/auth"
+	"github.com/getsettalk/Tijori/internal/httpx"
 	"github.com/getsettalk/Tijori/internal/quota"
+	"github.com/getsettalk/Tijori/internal/ratelimit"
 	"github.com/getsettalk/Tijori/internal/s3err"
 	"github.com/getsettalk/Tijori/internal/state"
 	"github.com/getsettalk/Tijori/internal/storage"
@@ -40,6 +43,8 @@ type Handler struct {
 	Events   Events
 	// ErrorFormat is "auto", "xml" or "json" (see config.Config).
 	ErrorFormat string
+	// RateLimit slows down busy keys and clients; nil limits nothing.
+	RateLimit *ratelimit.Policy
 
 	Stats Stats
 }
@@ -52,6 +57,7 @@ type Stats struct {
 	BytesOut  atomic.Int64
 	Uploads   atomic.Int64
 	Downloads atomic.Int64
+	Throttled atomic.Int64 // refused with SlowDown by the rate limit
 }
 
 type action int
@@ -100,6 +106,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	req.auth = res
 	r.Body = res.Body
+	accessKey := ""
+	if res.Key != nil {
+		accessKey = res.Key.AccessKey
+	}
+	httpx.Note(r, req.bucket, req.key, accessKey)
+	if ok, wait := h.RateLimit.Allow(r, res.Key); !ok {
+		h.Stats.Throttled.Add(1)
+		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
+		h.fail(req, s3err.SlowDown)
+		return
+	}
 	if err := h.route(req); err != nil {
 		h.fail(req, err)
 	}
@@ -232,9 +249,9 @@ func hasAny(q url.Values, keys ...string) bool {
 func (h *Handler) authorize(req *request, bucket string, act action) error {
 	k := req.auth.Key
 	if k == nil {
-		// Anonymous: only reading objects from public buckets.
+		// Anonymous: only reading objects from public buckets or folders.
 		if act == actRead && req.key != "" && (req.r.Method == http.MethodGet || req.r.Method == http.MethodHead) &&
-			bucket == req.bucket && h.Quota.Settings(bucket).PublicRead {
+			bucket == req.bucket && h.Quota.Settings(bucket).PublicKey(req.key) {
 			return nil
 		}
 		return s3err.AccessDenied
@@ -1013,8 +1030,9 @@ func (h *Handler) copyObject(req *request) error {
 // ---- ACLs -------------------------------------------------------------------
 
 // Tijori has no per-object ACLs: visibility is the bucket's public_read
-// setting. GetObjectAcl reports it (Flysystem/Laravel read it on copy and
-// move) and PutObjectAcl is accepted without changing anything.
+// setting or its public folders (public_prefixes). GetObjectAcl reports it
+// (Flysystem/Laravel read it on copy and move) and PutObjectAcl is accepted
+// without changing anything.
 
 const aclPrivate = `<AccessControlPolicy xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Owner><ID>tijori</ID><DisplayName>tijori</DisplayName></Owner><AccessControlList><Grant><Grantee xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="CanonicalUser"><ID>tijori</ID><DisplayName>tijori</DisplayName></Grantee><Permission>FULL_CONTROL</Permission></Grant>%s</AccessControlList></AccessControlPolicy>`
 const aclPublicGrant = `<Grant><Grantee xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="Group"><URI>http://acs.amazonaws.com/groups/global/AllUsers</URI></Grantee><Permission>READ</Permission></Grant>`
@@ -1029,7 +1047,7 @@ func (h *Handler) getACL(req *request) error {
 		}
 	}
 	extra := ""
-	if h.Quota.Settings(req.bucket).PublicRead {
+	if h.Quota.Settings(req.bucket).PublicKey(req.key) {
 		extra = aclPublicGrant
 	}
 	body := xml.Header + fmt.Sprintf(aclPrivate, extra)

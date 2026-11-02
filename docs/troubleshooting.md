@@ -32,7 +32,19 @@ The key does not exist (maybe revoked). Check `tijori key list`.
 
 The key is not allowed to do this: it is limited to other buckets, it is
 read-only or write-only, or you tried to create a bucket with a key that is
-not allowed on all buckets. Anonymous requests can only download from public buckets.
+not allowed on all buckets. Anonymous requests can only download from public buckets
+and public folders.
+
+## `503 SlowDown` or `429 Too Many Requests`
+
+The server has request limits (`[limits]`) and this key or address sent too
+many requests per second. S3 SDKs wait and retry on their own; the
+`Retry-After` header says how long. If the traffic is expected, raise
+`key_rps` / `anonymous_rps`, or give that key its own limit:
+
+```sh
+tijori key limit tj_XXXXXXXXXXXXXXXX 500   # or -1 for no limit
+```
 
 ## `413 Request Entity Too Large` from Nginx
 
@@ -112,7 +124,8 @@ Not yet. Use path-style URLs. All major SDKs support them.
 
 ## Laravel `Storage::setVisibility()` does nothing
 
-Visibility is per bucket in Tijori (the **Public** switch), not per file.
+Visibility is per bucket (the **Public** switch) or per folder (**Public folders**)
+in Tijori, not per file.
 
 ## Does it work on Windows?
 

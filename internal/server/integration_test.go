@@ -36,6 +36,12 @@ type testEnv struct {
 
 func startServer(t *testing.T, mutate func(*config.Config)) *testEnv {
 	t.Helper()
+	return startServerLog(t, mutate, io.Discard)
+}
+
+// startServerLog starts a test server whose log goes to logs.
+func startServerLog(t *testing.T, mutate func(*config.Config), logs io.Writer) *testEnv {
+	t.Helper()
 	cfg := config.Defaults()
 	cfg.DataDir = t.TempDir()
 	if mutate != nil {
@@ -44,7 +50,7 @@ func startServer(t *testing.T, mutate func(*config.Config)) *testEnv {
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	srv, err := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	srv, err := New(cfg, slog.New(slog.NewJSONHandler(logs, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}

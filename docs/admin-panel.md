@@ -19,6 +19,8 @@ at the bottom of the sidebar on every page.
 Create, edit and delete buckets. For each one you can set:
 
 - **Public**: anyone with the link can download (never upload).
+- **Public folders**: only these folders are public, for example `avatars/, products/`;
+  the rest of the bucket stays private. See [Configuration](configuration.md#public-folders).
 - **Quota** and **Max file size**: for example `10GB` and `500MB`.
 - **Video processing**: see [Video processing](video.md).
 
@@ -33,7 +35,8 @@ Buckets defined in `tijori.toml` show "Settings come from tijori.toml" and can o
 - **Upload** with the button or by dragging files onto the page (with progress bars).
 - Click a file to **preview** it: images, video and audio play in place; PDFs open in a new tab.
 - **Download**, **Share link** (a presigned link valid for 15 minutes to 7 days),
-  **Copy public URL** (public buckets; the original file) and **Delete**.
+  **Copy public URL** (public buckets and public folders; the original file) and **Delete**.
+  Public folders and files carry a **Public** badge.
 - **Image URL** (images only): choose width, height, fit, what to keep (smart, top…), format and
   quality, see a live preview with the resulting format, size and file size, and copy the `/img/`
   link. Private buckets get a signed link. See [Image resizing](images.md).
@@ -44,6 +47,10 @@ Buckets defined in `tijori.toml` show "Settings come from tijori.toml" and can o
 Create a key for each app. Choose the buckets it may use and whether it may
 read, write or both. The secret is shown **once**, together with ready-made
 Laravel and Node.js settings. **Revoke** stops a key immediately.
+
+The **Rate limit** column shows each key's requests per second. **Edit** sets
+it: empty or `0` uses the server default (`[limits] key_rps`), `-1` means no
+limit (for example for a backup job). See [Configuration](configuration.md#limits).
 
 ## Backup
 

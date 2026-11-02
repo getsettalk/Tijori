@@ -4,11 +4,12 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
-	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/getsettalk/Tijori/internal/ratelimit"
 )
 
 const (
@@ -109,11 +110,7 @@ func (l *limiter) recent(key string, now time.Time) []time.Time {
 // limitKey groups IPv6 clients by /64, since one host usually controls a
 // whole /64 and could otherwise rotate addresses to dodge the limit.
 func limitKey(ip string) string {
-	p := net.ParseIP(ip)
-	if p == nil || p.To4() != nil {
-		return "ip:" + ip
-	}
-	return "ip:" + p.Mask(net.CIDRMask(64, 128)).String() + "/64"
+	return "ip:" + ratelimit.ClientGroup(ip)
 }
 
 // blocked reports whether ip or user must wait, and for how long. user is

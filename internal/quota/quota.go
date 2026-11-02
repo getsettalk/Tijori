@@ -5,6 +5,7 @@ package quota
 
 import (
 	"fmt"
+	"runtime"
 	"sync"
 
 	"github.com/getsettalk/Tijori/internal/config"
@@ -15,10 +16,11 @@ import (
 
 // Settings are the effective options of one bucket.
 type Settings struct {
-	PublicRead    bool
-	MaxSize       int64
-	MaxObjectSize int64
-	VideoProcess  bool
+	PublicRead     bool
+	PublicPrefixes []string // folders anyone may read when the bucket is private
+	MaxSize        int64
+	MaxObjectSize  int64
+	VideoProcess   bool
 	// Managed is true when the bucket has a [buckets.<name>] section in the
 	// config file; the admin panel then shows settings read-only.
 	Managed bool
@@ -45,11 +47,21 @@ func New(cfg *config.Config, store *storage.Store, db *state.DB) *Manager {
 // the values saved from the admin panel apply.
 func (m *Manager) Settings(bucket string) Settings {
 	if b, ok := m.cfg.Bucket(bucket); ok {
-		return Settings{PublicRead: b.PublicRead, MaxSize: int64(b.MaxSize), MaxObjectSize: int64(b.MaxObjectSize),
+		return Settings{PublicRead: b.PublicRead, PublicPrefixes: b.PublicPrefixes, MaxSize: int64(b.MaxSize), MaxObjectSize: int64(b.MaxObjectSize),
 			VideoProcess: b.VideoProcess, Managed: true}
 	}
 	s := m.store.BucketSettings(bucket)
-	return Settings{PublicRead: s.PublicRead, MaxSize: s.MaxSize, MaxObjectSize: s.MaxObjectSize, VideoProcess: s.VideoProcess}
+	return Settings{PublicRead: s.PublicRead, PublicPrefixes: s.PublicPrefixes, MaxSize: s.MaxSize, MaxObjectSize: s.MaxObjectSize, VideoProcess: s.VideoProcess}
+}
+
+// foldCase is true where the disk ignores letter case, so "Public/x" and
+// "public/x" are the same file and must get the same answer.
+var foldCase = runtime.GOOS == "darwin" || runtime.GOOS == "windows"
+
+// PublicKey reports whether anyone may read key: the whole bucket is
+// public, or key lies in one of its public folders.
+func (s Settings) PublicKey(key string) bool {
+	return s.PublicRead || config.MatchPrefix(s.PublicPrefixes, key, foldCase)
 }
 
 // MaxObjectSize is the largest object allowed in bucket (0 = unlimited).

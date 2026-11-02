@@ -40,11 +40,11 @@ it speaks the same API as Amazon S3.
   <tr>
     <td valign="top"><img src="docs/images/readme/icon-image.svg" width="44" alt=""><br><b>Image resizing</b><br><code>/img/photos/cat.jpg?w=300</code> gives a thumbnail, cached on disk.</td>
     <td valign="top"><img src="docs/images/readme/icon-video.svg" width="44" alt=""><br><b>Video processing</b><br>Thumbnail and 720p copy with ffmpeg, plus a signed webhook when done.</td>
-    <td valign="top"><img src="docs/images/readme/icon-quota.svg" width="44" alt=""><br><b>Quotas</b><br>Limits per bucket, per file and for the whole server, checked before writing.</td>
+    <td valign="top"><img src="docs/images/readme/icon-quota.svg" width="44" alt=""><br><b>Quotas and limits</b><br>Space per bucket, per file and for the whole server, checked before writing. Optional requests per second per key.</td>
   </tr>
   <tr>
     <td valign="top"><img src="docs/images/readme/icon-backup.svg" width="44" alt=""><br><b>Backups</b><br>Download everything as one file from the admin panel, or back up to a folder, SSH or any S3 service. Restore with one upload.</td>
-    <td valign="top"><img src="docs/images/readme/icon-secure.svg" width="44" alt=""><br><b>Secure by default</b><br>Per-app keys, read/write permissions, CSRF-protected admin, sandboxed HTML.</td>
+    <td valign="top"><img src="docs/images/readme/icon-secure.svg" width="44" alt=""><br><b>Secure by default</b><br>Per-app keys, read/write permissions, public folders, CSRF-protected admin, sandboxed HTML.</td>
     <td valign="top"><img src="docs/images/readme/icon-deploy.svg" width="44" alt=""><br><b>Runs anywhere</b><br>Laptop, VPS with systemd, Docker, Docker Compose or Coolify.</td>
   </tr>
 </table>
@@ -280,7 +280,7 @@ you ask for another.
 | `/img/photos/beach.jpg?w=800&fmt=auto` | WebP for browsers that accept it |
 
 Also: exact `crop=x,y,w,h`, `fit=fill`, `dpr=2` for Retina, `rot`, `flip`, `q`, lossless WebP and
-`anim=0`. Public buckets work as-is; private buckets use a presigned `/img/...` URL. Phone photos are
+`anim=0`. Public buckets and public folders work as-is; private buckets use a presigned `/img/...` URL. Phone photos are
 turned upright. Details with examples: [docs/images.md](docs/images.md).
 
 ## 🎬 Video processing
@@ -306,7 +306,7 @@ signed webhook to your app. Details: [docs/video.md](docs/video.md).
   <img src="docs/images/admin-mobile.png" width="24%" alt="Tijori dashboard on a phone in dark mode">
 </p>
 
-Dashboard with usage bars · buckets with quotas and public switch · file browser with previews,
+Dashboard with usage bars · buckets with quotas, public switch and public folders · file browser with previews,
 search and drag-and-drop · access keys (the secret is shown once, with ready Laravel/Node settings) ·
 share links · backups · settings. Read-only users too: `tijori admin password --user viewer --readonly`.
 
@@ -346,6 +346,12 @@ error_format = "auto"      # XML errors for S3 SDKs, JSON when a client sends Ac
 public_read = true
 max_size = "10GB"
 max_object_size = "20MB"
+
+[buckets.shop]
+public_prefixes = ["products/"]   # only this folder is public, the rest stays private
+
+[limits]
+key_rps = 50          # requests per second per key (0 = no limit)
 ```
 
 Full reference: [docs/configuration.md](docs/configuration.md).
@@ -358,6 +364,7 @@ Full reference: [docs/configuration.md](docs/configuration.md).
 | `tijori init` | Create config, admin password and first key |
 | `tijori key create --name app --buckets photos --permission read` | New access key |
 | `tijori bucket create photos --public --max-size 10GB` | New bucket |
+| `tijori bucket create shop --public-folders products/` | Bucket with one public folder |
 | `tijori usage` | Space used per bucket |
 | `tijori backup` / `restore` / `export` / `import` | Backups and moving servers |
 | `tijori service install` | Run as a service (systemd / launchd) |

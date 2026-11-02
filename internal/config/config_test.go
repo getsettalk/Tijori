@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -89,5 +91,53 @@ func TestSchedule(t *testing.T) {
 	}
 	if _, err := ParseSchedule("sometimes"); err == nil {
 		t.Error("bad schedule accepted")
+	}
+}
+
+func TestPublicPrefixes(t *testing.T) {
+	got, err := NormalizePrefixes([]string{" /public", "avatars/", "", "public/", "a/b"})
+	if err != nil || strings.Join(got, ",") != "a/b/,avatars/,public/" {
+		t.Fatalf("normalize: %v %v", got, err)
+	}
+	for _, bad := range []string{"../x", "a//b", "./a", "a\\b", ".tijori/", "x/.TIJORI-y"} {
+		if _, err := NormalizePrefixes([]string{bad}); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+	many := make([]string, MaxPublicPrefixes+1)
+	for i := range many {
+		many[i] = fmt.Sprintf("p%d/", i)
+	}
+	if _, err := NormalizePrefixes(many); err == nil {
+		t.Error("too many prefixes accepted")
+	}
+	prefixes := []string{"public/"}
+	for key, want := range map[string]bool{"public/a.jpg": true, "public/x/y.png": true, "public/": false,
+		"public2/a.jpg": false, "publica.jpg": false, "private/a": false, "PUBLIC/a.jpg": false} {
+		if MatchPrefix(prefixes, key, false) != want {
+			t.Errorf("MatchPrefix(%q) != %v", key, want)
+		}
+	}
+	if !MatchPrefix(prefixes, "PUBLIC/a.jpg", true) {
+		t.Error("case folding not applied")
+	}
+
+	t.Setenv("TIJORI_BUCKETS_SHOP_PUBLIC_PREFIXES", "/banners, products/")
+	t.Setenv("TIJORI_LIMITS_KEY_RPS", "50")
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Buckets["shop"].PublicPrefixes; strings.Join(got, ",") != "banners/,products/" || cfg.Limits.KeyRPS != 50 {
+		t.Fatalf("env: %v %+v", got, cfg.Limits)
+	}
+	t.Setenv("TIJORI_BUCKETS_SHOP_PUBLIC_PREFIXES", "../secret")
+	if _, err := Load(""); err == nil {
+		t.Fatal("unsafe prefix accepted from the environment")
+	}
+	t.Setenv("TIJORI_BUCKETS_SHOP_PUBLIC_PREFIXES", "")
+	t.Setenv("TIJORI_LIMITS_KEY_RPS", "-1")
+	if _, err := Load(""); err == nil {
+		t.Fatal("negative limit accepted")
 	}
 }

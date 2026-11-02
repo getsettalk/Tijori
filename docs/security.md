@@ -28,7 +28,12 @@
 - Admin panel: `HttpOnly` + `SameSite=Strict` session cookies (`Secure` behind HTTPS), CSRF tokens on every change, rate-limited logins, a strict Content-Security-Policy and clickjacking protection.
 - Stored HTML, SVG and XML files are served with `Content-Security-Policy: sandbox`, so an uploaded web page cannot run scripts on your Tijori domain. All responses send `X-Content-Type-Options: nosniff`.
 - Secrets and query strings (which hold presigned signatures) are never logged.
-- Public buckets allow anonymous downloads only, never uploads, deletes or listing.
+- Public buckets and public folders allow anonymous downloads only, never uploads, deletes or
+  listing. A public folder matches whole folders: `products/` does not open `products-old/`.
+- Optional request limits (`[limits]`) slow down a leaked key or one busy client with
+  `503 SlowDown` before it can overload the server.
+- The access log records the bucket, file and access key of each S3 and `/img/` request
+  (never the secret), so you can see who touched what.
 - The Docker images run as a non-root user; the systemd unit uses a dedicated user and sandboxing.
 - Behind a reverse proxy (Caddy, Nginx, Coolify) the real client address is taken from the
   right-most `X-Forwarded-For` entry, and only when the direct peer is a private or loopback

@@ -74,10 +74,11 @@ type BucketInfo struct {
 // BucketSettings are per-bucket options editable from the admin panel. The
 // config file's [buckets.<name>] section, when present, takes precedence.
 type BucketSettings struct {
-	PublicRead    bool  `json:"public_read"`
-	MaxSize       int64 `json:"max_size"`
-	MaxObjectSize int64 `json:"max_object_size"`
-	VideoProcess  bool  `json:"video_process"`
+	PublicRead     bool     `json:"public_read"`
+	PublicPrefixes []string `json:"public_prefixes,omitempty"` // folders anyone may read
+	MaxSize        int64    `json:"max_size"`
+	MaxObjectSize  int64    `json:"max_object_size"`
+	VideoProcess   bool     `json:"video_process"`
 }
 
 type bucketMeta struct {

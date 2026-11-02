@@ -50,6 +50,14 @@ path    = "/_admin"
 #
 # [buckets.videos]
 # video_process = true        # make a thumbnail and 720p version on upload
+#
+# [buckets.shop]
+# public_prefixes = ["products/"]   # only this folder is public
+
+# Requests per second, to slow down a leaked key or a flood (0 = no limit).
+# [limits]
+# key_rps       = 50          # per access key
+# anonymous_rps = 20          # per visitor address, for public files
 
 [images]
 enabled   = true

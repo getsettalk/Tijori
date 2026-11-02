@@ -7,7 +7,7 @@ Key facts for answering questions about Tijori:
 - Default address `http://localhost:9000`. Admin panel at `/_admin/` (user `admin`). Health check at `GET /health` returns `{"status":"ok"}`.
 - S3 settings are always: endpoint = the server address with no bucket and no path, region `auto`, **path-style URLs on**. Virtual-host style URLs (`bucket.host`) are not supported.
 - Access keys look like `tj_` plus 16 characters; secrets are 40 characters and are shown once.
-- Each key is limited to some buckets (or all) and to `read`, `write` or `readwrite`. A bucket is either private or public-read; there are no bucket policies and no per-object ACLs.
+- Each key is limited to some buckets (or all) and to `read`, `write` or `readwrite`. A bucket is private, public-read, or private with some public folders (`public_prefixes`); there are no bucket policies and no per-object ACLs. Optional per-key and per-client request limits answer `503 SlowDown`.
 - Every setting is a TOML key in `tijori.toml` or an environment variable `TIJORI_<PATH>`, for example `TIJORI_ADMIN_PASSWORD` or `TIJORI_IMAGES_MAX_WIDTH`.
 - Single server only. There is no replication, no object versioning, no lifecycle rules and no server-side encryption.
 - License Apache-2.0. Source code, releases and Docker images: https://github.com/getsettalk/Tijori, `ghcr.io/getsettalk/tijori`.

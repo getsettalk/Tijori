@@ -6,7 +6,30 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-02
+
+Nothing changes after the upgrade until you use the new settings: buckets stay as public or private
+as they were, and there are no request limits by default.
+
 ### Added
+- **Public folders:** make only some folders of a bucket public, for example product photos while
+  invoices stay private. Set them in the admin panel (bucket → **Public folders**), in the config
+  (`[buckets.shop] public_prefixes = ["products/"]`, or `TIJORI_BUCKETS_SHOP_PUBLIC_PREFIXES`) or
+  with `tijori bucket create shop --public-folders products/`. Anyone may download files in those
+  folders and their subfolders, also through `/img/`; nobody anonymous may list, upload or delete.
+  Folders match whole names (`products/` does not open `products-old/`). The file browser marks
+  public folders and files, offers **Copy public URL** for them, and the object ACL reports them as
+  public to S3 clients.
+- **Request limits:** `[limits] key_rps` (per access key) and `anonymous_rps` (per visitor address,
+  IPv6 by /64), off by default. Short bursts up to twice the limit pass; beyond that S3 clients get
+  `503 SlowDown` with `Retry-After` (SDKs retry on their own) and `/img/` gets `429`. Each key can
+  have its own limit or none: admin panel → **Access keys** → **Rate limit**,
+  `tijori key create --rate-limit N`, or the new `tijori key limit ACCESS_KEY N` (`-1` = no limit).
+  Health checks, metrics and the admin panel are never limited. New metric
+  `tijori_s3_throttled_total`.
+- **Access log:** each S3 and `/img/` request line now names the `bucket`, the file `key` and the
+  `access_key` that signed it (or `anonymous`), plus `bytes_in` for uploads. Secrets are never
+  logged. With `log_format = "json"` this is one JSON line per request.
 - Admin panel: **Image URL** button for images in the file browser (and in the preview). Pick width,
   height, fit, what to keep and format, see a live preview with format, pixel size and file size,
   and copy the `/img/` link. Private buckets get a signed link. The admin API's presign endpoint

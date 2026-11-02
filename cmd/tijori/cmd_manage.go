@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -40,12 +41,13 @@ func splitList(s string) []string {
 
 func cmdKey(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: tijori key create|list|revoke")
+		return errors.New("usage: tijori key create|list|limit|revoke")
 	}
 	sub, args := args[0], args[1:]
 	switch sub {
 	case "create", "new", "add":
-		fs, cfgPath := newFlags("key create", "key create [--name NAME] [--buckets a,b] [--permission readwrite|read|write]")
+		fs, cfgPath := newFlags("key create", "key create [--name NAME] [--buckets a,b] [--permission readwrite|read|write] [--rate-limit N]")
+		rateLimit := fs.Int("rate-limit", 0, "requests per second for this key: 0 = server default, -1 = no limit")
 		name := fs.String("name", "", "a label so you remember what the key is for")
 		buckets := fs.String("buckets", "*", "comma-separated bucket names, or * for all")
 		perm := fs.String("permission", "readwrite", "read, write or readwrite")
@@ -71,6 +73,10 @@ func cmdKey(args []string) error {
 		if err != nil {
 			return err
 		}
+		if *rateLimit < -1 {
+			return errors.New("--rate-limit must be -1 (no limit), 0 (server default) or more")
+		}
+		k.RateLimit = *rateLimit
 		if err := db.AddKey(k); err != nil {
 			return err
 		}
@@ -80,6 +86,7 @@ func cmdKey(args []string) error {
 		fmt.Printf("  Secret key:  %s\n", k.SecretKey)
 		fmt.Printf("  Buckets:     %s\n", strings.Join(k.Buckets, ", "))
 		fmt.Printf("  Permission:  %s\n", k.Permission)
+		fmt.Printf("  Rate limit:  %s\n", limitText(k.RateLimit))
 		fmt.Println()
 		fmt.Println("Save the secret now. It is not shown again.")
 		return nil
@@ -98,15 +105,37 @@ func cmdKey(args []string) error {
 			return nil
 		}
 		tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(tw, "ACCESS KEY\tNAME\tBUCKETS\tPERMISSION\tCREATED")
+		fmt.Fprintln(tw, "ACCESS KEY\tNAME\tBUCKETS\tPERMISSION\tRATE LIMIT\tCREATED")
 		for _, k := range keys {
 			created := "-"
 			if !k.CreatedAt.IsZero() {
 				created = k.CreatedAt.Local().Format("2006-01-02")
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", k.AccessKey, dash(k.Name), strings.Join(k.Buckets, ","), k.Permission, created)
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", k.AccessKey, dash(k.Name), strings.Join(k.Buckets, ","), k.Permission, limitText(k.RateLimit), created)
 		}
 		return tw.Flush()
+	case "limit":
+		fs, cfgPath := newFlags("key limit", "key limit ACCESS_KEY N   (N requests per second; 0 = server default, -1 = no limit)")
+		pos, err := parseFlags(fs, args)
+		if err != nil {
+			return err
+		}
+		if len(pos) != 2 {
+			return errors.New("usage: tijori key limit ACCESS_KEY N")
+		}
+		n, err := strconv.Atoi(pos[1])
+		if err != nil || n < -1 {
+			return errors.New("N must be -1 (no limit), 0 (server default) or a number of requests per second")
+		}
+		_, db, _, err := openOffline(*cfgPath)
+		if err != nil {
+			return err
+		}
+		if err := db.UpdateKey(pos[0], func(k *state.AccessKey) { k.RateLimit = n }); err != nil {
+			return err
+		}
+		fmt.Printf("Key %s: rate limit %s. A running server uses it within seconds.\n", pos[0], limitText(n))
+		return nil
 	case "revoke", "delete", "rm":
 		fs, cfgPath := newFlags("key revoke", "key revoke ACCESS_KEY")
 		pos, err := parseFlags(fs, args)
@@ -126,7 +155,18 @@ func cmdKey(args []string) error {
 		fmt.Printf("Key %s revoked. Apps using it will now get AccessDenied.\n", pos[0])
 		return nil
 	}
-	return fmt.Errorf("unknown key command %q (use create, list or revoke)", sub)
+	return fmt.Errorf("unknown key command %q (use create, list, limit or revoke)", sub)
+}
+
+// limitText describes a key's rate limit setting.
+func limitText(n int) string {
+	switch {
+	case n < 0:
+		return "none"
+	case n == 0:
+		return "default"
+	}
+	return fmt.Sprintf("%d/s", n)
 }
 
 func dash(s string) string {
@@ -143,8 +183,9 @@ func cmdBucket(args []string) error {
 	sub, args := args[0], args[1:]
 	switch sub {
 	case "create", "new", "add", "mb":
-		fs, cfgPath := newFlags("bucket create", "bucket create NAME [--public] [--max-size 10GB] [--max-object-size 500MB]")
+		fs, cfgPath := newFlags("bucket create", "bucket create NAME [--public | --public-folders public/,avatars/] [--max-size 10GB] [--max-object-size 500MB]")
 		public := fs.Bool("public", false, "allow anyone to download files (never upload)")
+		folders := fs.String("public-folders", "", "comma-separated folders anyone may download from, the rest stays private")
 		maxSize := fs.String("max-size", "", "bucket quota, e.g. 10GB")
 		maxObj := fs.String("max-object-size", "", "largest file allowed, e.g. 500MB")
 		pos, err := parseFlags(fs, args)
@@ -157,6 +198,10 @@ func cmdBucket(args []string) error {
 		_, _, store, err := openOffline(*cfgPath)
 		if err != nil {
 			return err
+		}
+		prefixes, err := config.NormalizePrefixes(strings.Split(*folders, ","))
+		if err != nil {
+			return fmt.Errorf("--public-folders: %w", err)
 		}
 		ms, err := config.ParseSize(*maxSize)
 		if err != nil {
@@ -175,14 +220,17 @@ func cmdBucket(args []string) error {
 			}
 			return err
 		}
-		if *public || ms > 0 || mo > 0 {
-			if err := store.SetBucketSettings(pos[0], storage.BucketSettings{PublicRead: *public, MaxSize: int64(ms), MaxObjectSize: int64(mo)}); err != nil {
+		if *public || len(prefixes) > 0 || ms > 0 || mo > 0 {
+			st := storage.BucketSettings{PublicRead: *public, PublicPrefixes: prefixes, MaxSize: int64(ms), MaxObjectSize: int64(mo)}
+			if err := store.SetBucketSettings(pos[0], st); err != nil {
 				return err
 			}
 		}
 		fmt.Printf("Bucket %q created.\n", pos[0])
 		if *public {
 			fmt.Println("Files in it can be downloaded by anyone who knows the URL.")
+		} else if len(prefixes) > 0 {
+			fmt.Printf("Files in %s can be downloaded by anyone; the rest is private.\n", strings.Join(prefixes, ", "))
 		}
 		return nil
 	case "list", "ls":
@@ -213,7 +261,11 @@ func cmdBucket(args []string) error {
 			if st.MaxSize > 0 {
 				quotaStr = config.FormatBytes(st.MaxSize)
 			}
-			fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%v\t%s\n", b.Name, u.Objects, config.FormatBytes(u.Bytes), quotaStr, yesNo(st.PublicRead), b.Created.Local().Format("2006-01-02"))
+			public := yesNo(st.PublicRead)
+			if !st.PublicRead && len(st.PublicPrefixes) > 0 {
+				public = strings.Join(st.PublicPrefixes, ",")
+			}
+			fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%v\t%s\n", b.Name, u.Objects, config.FormatBytes(u.Bytes), quotaStr, public, b.Created.Local().Format("2006-01-02"))
 		}
 		return tw.Flush()
 	case "delete", "rm", "rb":

@@ -65,7 +65,7 @@ The file appears in the admin panel's file browser.
 
 ## Notes
 
-- **Visibility:** Tijori decides public access per bucket (the **Public** switch),
-  not per file. `Storage::setVisibility()` is accepted but does not change anything.
+- **Visibility:** Tijori decides public access per bucket (the **Public** switch)
+  or per folder (**Public folders**), not per file. `Storage::setVisibility()` is accepted but does not change anything.
 - **Resized images:** build URLs like `https://files.example.com/img/my-app/avatars/a.jpg?w=200`.
   See [Image resizing](images.md).

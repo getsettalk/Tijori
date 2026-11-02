@@ -153,7 +153,7 @@ between them: `fmt=webp` turns a GIF into an animated WebP, often less than half
 
 ## Who can see resized images?
 
-- **Public buckets:** anyone, like the originals.
+- **Public buckets and public folders:** anyone, like the originals.
 - **Private buckets:** use a presigned URL for the `/img/...` address (the query parameters are
   part of what is signed).
 

@@ -263,6 +263,8 @@ func (h *Handler) api(w http.ResponseWriter, r *http.Request, p string) {
 		h.createKey(w, r)
 	case r.Method == http.MethodDelete && strings.HasPrefix(p, "/keys/"):
 		h.revokeKey(w, r, strings.TrimPrefix(p, "/keys/"))
+	case r.Method == http.MethodPut && strings.HasPrefix(p, "/keys/"):
+		h.updateKey(w, r, strings.TrimPrefix(p, "/keys/"))
 	case route == "GET /backup":
 		h.backupStatus(w, r)
 	case route == "POST /backup":

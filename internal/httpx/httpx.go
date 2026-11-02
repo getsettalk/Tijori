@@ -4,6 +4,7 @@
 package httpx
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"slices"
@@ -141,4 +142,26 @@ func sanitizeHeaderList(v string) string {
 		}
 	}
 	return strings.Join(out, ", ")
+}
+
+// Info collects what a handler learned about a request (bucket, object key
+// and access key), so the access log can show it.
+type Info struct {
+	Bucket, Key, AccessKey string
+}
+
+type infoKey struct{}
+
+// WithInfo returns r carrying an empty Info for handlers to fill in.
+func WithInfo(r *http.Request) (*http.Request, *Info) {
+	info := &Info{}
+	return r.WithContext(context.WithValue(r.Context(), infoKey{}, info)), info
+}
+
+// Note records the bucket, key and access key ID of r, if the request
+// carries an Info. The secret key is never recorded.
+func Note(r *http.Request, bucket, key, accessKey string) {
+	if info, ok := r.Context().Value(infoKey{}).(*Info); ok {
+		info.Bucket, info.Key, info.AccessKey = bucket, key, accessKey
+	}
 }

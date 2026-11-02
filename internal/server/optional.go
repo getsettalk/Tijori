@@ -24,7 +24,7 @@ func (s *Server) initOptional() error {
 		}
 		s.ImageCache = cache
 		s.Images = &imageproc.Handler{
-			Store: s.Store, Verifier: s.S3.Verifier, Quota: s.Quota, Cache: cache, Log: s.Log,
+			Store: s.Store, Verifier: s.S3.Verifier, Quota: s.Quota, Cache: cache, Log: s.Log, RateLimit: s.S3.RateLimit,
 			Limits: imageproc.Limits{
 				MaxWidth: ic.MaxWidth, MaxHeight: ic.MaxHeight, MaxPixels: ic.MaxPixels,
 				MaxInputSize: int64(ic.MaxInputSize), AllowedWidths: ic.AllowedWidths, Quality: ic.Quality,

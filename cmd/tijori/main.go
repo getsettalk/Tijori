@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -111,9 +112,17 @@ func newFlags(name, synopsis string) (*flag.FlagSet, *string) {
 }
 
 // parseFlags parses flags that may appear before or after positional args.
+// Negative numbers ("-1") are positional args, not flags.
 func parseFlags(fs *flag.FlagSet, args []string) ([]string, error) {
 	var pos []string
 	for {
+		if len(args) > 0 && len(args[0]) > 1 && args[0][0] == '-' {
+			if _, err := strconv.Atoi(args[0]); err == nil {
+				pos = append(pos, args[0])
+				args = args[1:]
+				continue
+			}
+		}
 		if err := fs.Parse(args); err != nil {
 			return nil, err
 		}

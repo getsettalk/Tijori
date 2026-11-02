@@ -255,14 +255,14 @@ Errors are S3 XML by default. With `Accept: application/json` on a request (or `
 {"error": {"code": "NoSuchKey", "message": "...", "status": 404, "bucket": "photos", "key": "a.jpg", "resource": "/photos/a.jpg", "request_id": "..."}}
 ```
 
-Common codes: `SignatureDoesNotMatch`, `InvalidAccessKeyId`, `AccessDenied`, `RequestTimeTooSkewed`, `NoSuchBucket`, `NoSuchKey`, `BucketNotEmpty`, `BucketAlreadyOwnedByYou`, `QuotaExceeded`, `EntityTooLarge`, `InvalidRange`, `HeadersNotSigned`, `NotImplemented`.
+Common codes: `SignatureDoesNotMatch`, `InvalidAccessKeyId`, `AccessDenied`, `RequestTimeTooSkewed`, `NoSuchBucket`, `NoSuchKey`, `BucketNotEmpty`, `BucketAlreadyOwnedByYou`, `QuotaExceeded`, `EntityTooLarge`, `InvalidRange`, `HeadersNotSigned`, `SlowDown` (rate limit, 503 with `Retry-After`), `NotImplemented`.
 
 ## 6. HTTP routes on the server
 
 | Path | What |
 | --- | --- |
 | `/health` | `{"status":"ok"}` without authentication. Does not reveal the version. |
-| `/metrics` | Prometheus metrics when `metrics = true`: `tijori_info`, `tijori_uptime_seconds`, `tijori_s3_requests_total`, `tijori_s3_errors_total`, `tijori_s3_uploads_total`, `tijori_s3_downloads_total`, `tijori_s3_received_bytes_total`, `tijori_bucket_bytes`, and more. |
+| `/metrics` | Prometheus metrics when `metrics = true`: `tijori_info`, `tijori_uptime_seconds`, `tijori_s3_requests_total`, `tijori_s3_errors_total`, `tijori_s3_uploads_total`, `tijori_s3_downloads_total`, `tijori_s3_received_bytes_total`, `tijori_s3_throttled_total`, `tijori_bucket_bytes`, and more. |
 | `/_admin/` | Admin panel (path set by `[admin] path`). |
 | `/img/<bucket>/<key>?w=...` | Resized images (section 7). |
 | `/<bucket>` and `/<bucket>/<key>` | S3 API. |
@@ -296,7 +296,7 @@ URL: `<endpoint>/img/<bucket>/<key>?w=300`. The original is never changed. By de
 - WebP encoding uses libwebp translated to pure Go (no C libraries); release builds use `-tags nodynamic` so a system libwebp is never loaded.
 - Animations are resized frame by frame while frames × width × height ≤ 25 million pixels (or `max_pixels` if lower); bigger ones return the first frame with an `X-Tijori-Note` header. GIF ↔ WebP conversion keeps the animation.
 - Results are cached on disk with LRU eviction (`cache_size`). `X-Tijori-Cache: HIT` or `MISS` shows whether the cache was used. The cache key includes the ETag, so replacing an original creates new variants.
-- Public buckets: anyone can open the URL, and responses send `Cache-Control: public, max-age=31536000`. Add `&v=2` to bust browser caches. Private buckets need a presigned URL for the `/img/...` address.
+- Public buckets and public folders: anyone can open the URL, and responses send `Cache-Control: public, max-age=31536000`. Add `&v=2` to bust browser caches. Private buckets need a presigned URL for the `/img/...` address.
 - Limits: `max_width`/`max_height` (4000), `max_pixels` (50,000,000), `max_input_size` (50MB). Optional `allowed_widths` stops people filling the cache with arbitrary sizes.
 
 ## 8. Video processing
@@ -316,11 +316,13 @@ URL: `<endpoint>/img/<bucket>/<key>?w=300`. The original is never changed. By de
 - A file over the size limit gets `EntityTooLarge`.
 - Usage is counted live and recounted from disk at startup. After editing files on disk by hand, run `tijori usage --recalc`.
 - Sizes accept `KB`, `MB`, `GB`, `TB` (powers of 1024). `0` or empty means no limit.
+- Request limits (since 1.2.0, off by default): `[limits] key_rps` per access key and `anonymous_rps` per client address (IPv6 by /64). Bursts up to twice the limit are allowed. Over the limit, S3 requests get `503 SlowDown` with `Retry-After` (SDKs retry on their own) and `/img/` gets `429`. A key can have its own limit (`tijori key limit ACCESS_KEY 200`, or Keys → Rate limit in the panel); `-1` exempts it. Health checks, metrics and the admin panel are never limited.
 
 ## 10. Access keys and admin users
 
 - Create keys in the admin panel (Keys → New key) or with `tijori key create --name laravel --buckets photos,docs --permission readwrite|read|write`.
 - Without `--buckets` a key may use every bucket, and only such keys may create buckets.
+- `--rate-limit N` gives a key its own requests per second (`-1` = no limit, `0` = the `[limits] key_rps` default). Change it later with `tijori key limit ACCESS_KEY N`.
 - The secret is shown once; the panel shows ready `.env` (Laravel) and Node.js settings at that moment.
 - Revoke with `tijori key revoke <ACCESS_KEY>` or in the panel. It takes effect immediately.
 - An optional root key comes from `TIJORI_ACCESS_KEY`/`TIJORI_SECRET_KEY`. It has full access and is never written to disk.
@@ -331,9 +333,9 @@ URL: `<endpoint>/img/<bucket>/<key>?w=300`. The original is never changed. By de
 
 At `<endpoint>/_admin/`, log in as `admin`.
 - **Dashboard:** storage used, files, buckets, keys, a usage bar per bucket, endpoint, version with commit and build date, uptime, free disk, ffmpeg status, image cache and last backup.
-- **Buckets:** create, edit (Public, Quota, Max file size, Video processing) and delete. Buckets defined in `tijori.toml` are read-only here.
+- **Buckets:** create, edit (Public, Public folders, Quota, Max file size, Video processing) and delete. Buckets defined in `tijori.toml` are read-only here.
 - **Files:** folders with their totals (subfolders, files, size, last change), search, drag-and-drop upload with progress, preview (images, video, audio, PDF), download, share link (presigned, 15 minutes to 7 days), copy public URL (the original file), an **Image URL** builder for images (size, fit, smart crop, format, live preview; signed for private buckets), new folder, and delete (also whole folders). Files of 8 MB and more upload in parts of about 15 seconds each with retries, so proxies with time limits don't cut them.
-- **Keys:** create (buckets and permission), list and revoke.
+- **Keys:** create (buckets, permission, rate limit), list, change the rate limit, and revoke. Files and folders that anyone may open are marked Public.
 - **Backup:**
   - **Download backup:** one `.tar.gz` with everything. It asks for the password again and uses a one-time link valid for 2 minutes.
   - **Restore from a backup file:** see section 12.
@@ -387,7 +389,8 @@ Tijori reads `./tijori.toml`, then `/etc/tijori/tijori.toml`, or the file given 
 | `error_format` | `"auto"` | `auto` (XML, JSON when `Accept: application/json`), `xml` or `json`. |
 | `access_key`, `secret_key` | | Optional root key (usually `TIJORI_ACCESS_KEY`/`TIJORI_SECRET_KEY`). |
 | `[admin] enabled`, `path`, `listen`, `password` | `true`, `"/_admin"`, , | Admin panel switch, URL path, separate address, `admin` password (`TIJORI_ADMIN_PASSWORD`). |
-| `[buckets.<name>] public_read`, `max_size`, `max_object_size`, `video_process` | `false`, , , `false` | Buckets created at startup; their settings can then only be changed in the file. |
+| `[buckets.<name>] public_read`, `public_prefixes`, `max_size`, `max_object_size`, `video_process` | `false`, `[]`, , , `false` | Buckets created at startup; their settings can then only be changed in the file. `public_prefixes` makes only these folders public, e.g. `["avatars/", "products/"]` (env `TIJORI_BUCKETS_SHOP_PUBLIC_PREFIXES=avatars/,products/`). |
+| `[limits] key_rps`, `anonymous_rps` | `0`, `0` | Requests per second per access key and per anonymous client address; `0` = no limit. |
 | `[images] enabled`, `max_width`, `max_height`, `max_pixels`, `max_input_size`, `allowed_widths`, `quality`, `cache_size` | `true`, `4000`, `4000`, `50000000`, `"50MB"`, , `80`, `"500MB"` | Image resizing. |
 | `[video] ffmpeg`, `workers`, `presets`, `webhook`, `webhook_secret` | `""`, `1`, `["thumbnail","720p"]`, , | Video processing. |
 | `[backup] to`, `schedule`, `keep` | , , `7` | Automatic backups. |
@@ -405,6 +408,13 @@ public_read = true
 max_size = "10GB"
 max_object_size = "20MB"
 
+[buckets.shop]
+public_prefixes = ["products/"]   # only this folder is public
+
+[limits]
+key_rps = 50
+anonymous_rps = 20
+
 [images]
 allowed_widths = [150, 300, 600, 1200]
 
@@ -421,8 +431,9 @@ Every command accepts `--config PATH`. `tijori <command> -h` lists all flags. Co
 | --- | --- |
 | `tijori` / `tijori serve` | Start the server. |
 | `tijori init` | Config, data folder, admin password and first key (`--data-dir --listen --public-url --admin-password --yes`). |
-| `tijori key create / list / revoke ACCESS_KEY` | Manage access keys (`--name --buckets --permission`). |
-| `tijori bucket create NAME / list / delete NAME` | `--public --max-size --max-object-size`; delete needs an empty bucket unless `--force`. |
+| `tijori key create / list / revoke ACCESS_KEY` | Manage access keys (`--name --buckets --permission --rate-limit`). |
+| `tijori key limit ACCESS_KEY N` | Set a key's requests per second (`-1` none, `0` default). |
+| `tijori bucket create NAME / list / delete NAME` | `--public --public-folders avatars/,products/ --max-size --max-object-size`; delete needs an empty bucket unless `--force`. |
 | `tijori usage [--recalc]` | Space per bucket. |
 | `tijori admin password` | Reset a password (`--user --password --readonly`). |
 | `tijori backup --to DEST [--keep N]` / `tijori restore --from SRC [--snapshot NAME]` | Incremental backup / restore (server stopped). |
@@ -444,11 +455,11 @@ Every command accepts `--config PATH`. `tijori <command> -h` lists all flags. Co
 - Signature V4 checked in constant time; presigned URLs last at most 7 days.
 - Path traversal is impossible: keys are validated and joined safely.
 - Quotas and image limits are checked before work starts.
-- Public buckets allow anonymous reads only.
+- Public buckets and public folders allow anonymous reads of single files only: no listing, upload or delete. Folder matching is by whole folder (`products/` does not open `products-old/`), and case-insensitive on macOS and Windows disks.
 - Uploaded HTML, SVG and XML are served with `Content-Security-Policy: sandbox`, and every response sends `nosniff`.
-- Secrets and query strings are never logged.
+- Secrets and query strings are never logged. Each request line has method, path, status, sizes, time, client address and, for S3 and `/img/`, `bucket`, `key` and `access_key` (or `anonymous`).
 - The real client IP is taken from the right-most `X-Forwarded-For` entry, and only from private or loopback peers.
-- Logins and password confirmations are rate limited (IPv6 grouped by /64).
+- Logins and password confirmations are rate limited (IPv6 grouped by /64). Optional `[limits]` slow down busy keys and anonymous clients.
 - Docker images and the systemd unit run unprivileged.
 - Archives are checked on import and restore.
 - Backup downloads need the password again and a one-time link.
@@ -481,6 +492,7 @@ Every write goes to `.tmp` first, is fsynced and then renamed into place, so rea
 | `413` from Cloudflare over 100 MB | Use multipart or disable the proxy for the domain. |
 | `499`/`504` after about 60 seconds | The proxy time limit (Coolify Traefik 60 s). Use multipart in SDKs; the admin panel already sends parts. |
 | `QuotaExceeded` / `EntityTooLarge` | A limit was reached (section 9). |
+| `503 SlowDown` or `/img/` `429` | Too many requests for `[limits]`. SDKs retry; raise `key_rps`/`anonymous_rps`, or give the key its own limit (`tijori key limit KEY 500`, `-1` = none). |
 | Browser "blocked by CORS policy" | Add the page's origin to `cors_origins` and restart. |
 | `ERR_BLOCKED_BY_CLIENT` | An ad blocker is blocking `*.sslip.io`; allow it or use your own domain. |
 | "Permission denied" at start | `sudo chown -R tijori:tijori /var/lib/tijori`. |
@@ -493,8 +505,8 @@ Every write goes to `.tmp` first, is fsynced and then renamed into place, so rea
 
 - Always configure SDKs with endpoint = server address only, region `auto` and path-style on. Never suggest `bucket.files.example.com` URLs.
 - Never put an access secret in mobile apps, browser JavaScript or public repositories. Generate presigned URLs on a backend.
-- Public access is a per-bucket switch, not per object. Do not suggest bucket policies, IAM, `x-amz-acl` or `setVisibility` for access control.
-- Unsupported features are listed in section 5. Suggest the Tijori alternative: the bucket Public switch instead of a policy, `cors_origins` instead of PutBucketCors, backups instead of replication, new keys instead of versioning.
+- Public access is set per bucket (`public_read`) or per folder (`public_prefixes`, since 1.2.0), not per object. Do not suggest bucket policies, IAM, `x-amz-acl` or `setVisibility` for access control. Laravel's `Storage::setVisibility()` changes nothing; the bucket or folder setting decides.
+- Unsupported features are listed in section 5. Suggest the Tijori alternative: the bucket Public switch or public folders instead of a policy, `cors_origins` instead of PutBucketCors, backups instead of replication, new keys instead of versioning.
 - For big files use multipart (`Upload` from `@aws-sdk/lib-storage`, boto3 `upload_file`, Laravel streams). Behind Coolify a single request must finish within 60 seconds.
 - Use `/img/<bucket>/<key>?w=...` for thumbnails instead of resizing in the app. For crops that keep the subject use `pos=smart` or a focal point `fp`; for modern formats use `fmt=auto` or `fmt=webp`. Do not claim WebP output is unsupported: it is supported since 1.1.0.
 - For backups on small setups, recommend the admin panel's Download backup and Restore from a backup file. For automation, recommend `[backup]` with a schedule to another disk, an SFTP server or an S3 service.

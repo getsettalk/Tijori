@@ -24,6 +24,7 @@ import (
 	"github.com/getsettalk/Tijori/internal/httpx"
 	"github.com/getsettalk/Tijori/internal/imageproc"
 	"github.com/getsettalk/Tijori/internal/quota"
+	"github.com/getsettalk/Tijori/internal/ratelimit"
 	"github.com/getsettalk/Tijori/internal/s3api"
 	"github.com/getsettalk/Tijori/internal/state"
 	"github.com/getsettalk/Tijori/internal/storage"
@@ -123,6 +124,7 @@ func New(cfg *config.Config, log *slog.Logger) (*Server, error) {
 			Region:      cfg.Region,
 			ErrorFormat: cfg.ErrorFormat,
 			Log:         log,
+			RateLimit:   &ratelimit.Policy{KeyRPS: cfg.Limits.KeyRPS, AnonymousRPS: cfg.Limits.AnonymousRPS},
 		},
 	}
 	if err := s.initOptional(); err != nil {
@@ -228,6 +230,7 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "# TYPE tijori_uptime_seconds gauge\ntijori_uptime_seconds %d\n", int(time.Since(s.started).Seconds()))
 	fmt.Fprintf(w, "# TYPE tijori_s3_requests_total counter\ntijori_s3_requests_total %d\n", st.Requests.Load())
 	fmt.Fprintf(w, "# TYPE tijori_s3_errors_total counter\ntijori_s3_errors_total %d\n", st.Errors.Load())
+	fmt.Fprintf(w, "# HELP tijori_s3_throttled_total Requests refused with SlowDown by the rate limit.\n# TYPE tijori_s3_throttled_total counter\ntijori_s3_throttled_total %d\n", st.Throttled.Load())
 	fmt.Fprintf(w, "# TYPE tijori_s3_uploads_total counter\ntijori_s3_uploads_total %d\n", st.Uploads.Load())
 	fmt.Fprintf(w, "# TYPE tijori_s3_downloads_total counter\ntijori_s3_downloads_total %d\n", st.Downloads.Load())
 	fmt.Fprintf(w, "# TYPE tijori_s3_received_bytes_total counter\ntijori_s3_received_bytes_total %d\n", st.BytesIn.Load())
@@ -289,6 +292,7 @@ func (s *Server) withAccessLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t0 := time.Now()
 		rec := &statusRecorder{ResponseWriter: w}
+		r, info := httpx.WithInfo(r)
 		defer func() {
 			if v := recover(); v != nil {
 				s.Log.Error("panic serving request", "method", r.Method, "path", r.URL.Path, "panic", v)
@@ -303,8 +307,23 @@ func (s *Server) withAccessLog(next http.Handler) http.Handler {
 			if r.URL.Path == "/health" || r.URL.Path == "/metrics" {
 				lvl = slog.LevelDebug
 			}
-			s.Log.Log(r.Context(), lvl, "request", "method", r.Method, "path", r.URL.Path, "status", rec.status,
-				"bytes", rec.bytes, "ms", time.Since(t0).Milliseconds(), "remote", httpx.ClientIP(r))
+			attrs := []any{"method", r.Method, "path", r.URL.Path, "status", rec.status,
+				"bytes", rec.bytes, "ms", time.Since(t0).Milliseconds(), "remote", httpx.ClientIP(r)}
+			if r.ContentLength > 0 {
+				attrs = append(attrs, "bytes_in", r.ContentLength)
+			}
+			if info.Bucket != "" { // S3 and /img/ requests: who touched what
+				attrs = append(attrs, "bucket", info.Bucket)
+				if info.Key != "" {
+					attrs = append(attrs, "key", info.Key)
+				}
+				if info.AccessKey != "" {
+					attrs = append(attrs, "access_key", info.AccessKey)
+				} else {
+					attrs = append(attrs, "access_key", "anonymous")
+				}
+			}
+			s.Log.Log(r.Context(), lvl, "request", attrs...)
 		}()
 		next.ServeHTTP(rec, r)
 	})

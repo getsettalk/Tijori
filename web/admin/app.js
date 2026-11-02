@@ -27,6 +27,9 @@ const STRINGS = {
     imagePublicHint: "Anyone can open this link. The original stays untouched; this version is made on first use and then cached.",
     imagePrivateHint: "This bucket is private, so the link is signed and stops working after the time above (or when its key is revoked).",
     imageMore: "More options (focal point, exact crop, Retina, rotate):",
+    publicFolders: "Public folders", publicFoldersHint: "Only these folders can be downloaded by anyone (for example public/, avatars/); everything else stays private. Separate with commas. Not needed when the whole bucket is public.",
+    rateLimit: "Rate limit", rateLimitHint: "Requests per second for this key. Empty: the server default. -1: no limit.",
+    limitDefault: "server default", limitNone: "no limit", perSecond: "/s",
     confirmDelete: "Delete {name}? This cannot be undone.", confirmFolder: "Delete the folder {name} and everything in it?",
     newKey: "New key", permission: "Permission", allBuckets: "All buckets", revoke: "Revoke",
     confirmRevoke: "Revoke {name}? Apps using it will stop working.", secretOnce: "Copy the secret now. It is shown only once.",
@@ -365,6 +368,9 @@ function bucketFields(b = {}, isNew = true) {
       <div class="field"><label>${t("maxFile")}</label><input type="text" name="max_object_size" placeholder="500MB" value="${esc(sz(b.max_object_size))}"></div></div>
     <label class="check"><input type="checkbox" name="public_read" ${b.public_read ? "checked" : ""}> ${t("public")}</label>
     <div class="hint">${t("publicHint")}</div>
+    <div class="field"><label for="b-prefixes">${t("publicFolders")}</label><input id="b-prefixes" type="text" name="public_prefixes"
+      placeholder="public/, avatars/" value="${esc((b.public_prefixes || []).join(", "))}">
+      <div class="hint">${t("publicFoldersHint")}</div></div>
     <label class="check"><input type="checkbox" name="video_process" ${b.video_process ? "checked" : ""}> ${t("video")}</label>
     <div class="hint">${t("videoHint")}</div>`;
 }
@@ -375,6 +381,7 @@ function bucketValues(form) {
     max_size: form.elements.max_size.value.trim(),
     max_object_size: form.elements.max_object_size.value.trim(),
     public_read: form.elements.public_read.checked,
+    public_prefixes: form.elements.public_prefixes.value.split(",").map((p) => p.trim()).filter(Boolean),
     video_process: form.elements.video_process.checked,
   };
 }
@@ -386,7 +393,8 @@ VIEWS.buckets = async (main) => {
     <div class="card">${list.length ? `<table class="table"><thead><tr><th>${t("name")}</th><th class="num">${t("objects")}</th>
       <th>${t("totalUsed")}</th><th class="hide-sm">${t("created")}</th><th></th></tr></thead><tbody>
       ${list.map((b) => `<tr><td><a href="#/browse/${encodeURIComponent(b.name)}"><strong>${esc(b.name)}</strong></a>
-        ${b.public_read ? ` <span class="badge public">${t("public")}</span>` : ""}${b.video_process ? ` <span class="badge">${t("video")}</span>` : ""}
+        ${b.public_read ? ` <span class="badge public">${t("public")}</span>` : ""}${!b.public_read && (b.public_prefixes || []).length
+          ? ` <span class="badge public" title="${esc(b.public_prefixes.join(", "))}">${b.public_prefixes.length} ${t("publicFolders").toLowerCase()}</span>` : ""}${b.video_process ? ` <span class="badge">${t("video")}</span>` : ""}
         ${b.managed ? `<div class="hint">${t("managed")}</div>` : ""}</td>
         <td class="num">${b.objects}</td>
         <td>${bytes(b.bytes)}${b.max_size ? ` / ${bytes(b.max_size)}<div class="bar"><span data-pct="${pct(b.bytes, b.max_size)}"></span></div>` : ""}</td>
@@ -465,8 +473,10 @@ VIEWS.browse = async (main, parts) => {
     const rows = [];
     for (const f of res.folders) {
       const name = f.slice(prefix.length).replace(/\/$/, "");
+      const pubFolder = !binfo.public_read && (binfo.public_prefixes || []).some((p) => f.startsWith(p));
       rows.push(`<li class="file folder"><div class="thumb">${icon("folder")}</div><div class="name">
-        <a href="${browseHash(bucket, f)}">${esc(name)}</a><div class="meta" data-fstats="${esc(f)}">folder</div></div>
+        <a href="${browseHash(bucket, f)}">${esc(name)}</a>${pubFolder ? ` <span class="badge public">${t("public")}</span>` : ""}
+        <div class="meta" data-fstats="${esc(f)}">folder</div></div>
         <div class="actions">${ro() ? "" : `<button class="btn small danger" data-delfolder="${esc(f)}">${t("delete")}</button>`}</div></li>`);
     }
     for (const f of res.files) {
@@ -474,12 +484,12 @@ VIEWS.browse = async (main, parts) => {
       const thumb = isImage(f.type)
         ? `<img loading="lazy" alt="" src="${API}/thumb?bucket=${encodeURIComponent(bucket)}&key=${encodeURIComponent(f.key)}&w=88&h=88&fit=cover&pos=smart&anim=0">`
         : icon(isVideo(f.type) ? "video" : "file");
-      rows.push(`<li class="file" data-key="${esc(f.key)}" data-type="${esc(f.type)}"><div class="thumb">${thumb}</div>
+      rows.push(`<li class="file" data-key="${esc(f.key)}" data-type="${esc(f.type)}" data-pub="${f.public ? 1 : ""}"><div class="thumb">${thumb}</div>
         <div class="name"><button data-open>${esc(display)}</button>
         <div class="meta">${bytes(f.size)} · ${new Date(f.modified).toLocaleString()}</div></div>
         <div class="actions"><a class="btn small" href="${objURL(bucket, f.key)}" download>${t("download")}</a>
           <button class="btn small" data-share>${t("shareLink")}</button>
-          ${binfo.public_read ? `<button class="btn small" data-public>${t("copyUrl")}</button>` : ""}
+          ${f.public ? `<button class="btn small" data-public>${t("copyUrl")}</button>` : ""}
           ${isImage(f.type) ? `<button class="btn small" data-imgurl>${t("imageUrl")}</button>` : ""}
           ${ro() ? "" : `<button class="btn small danger" data-del>${t("delete")}</button>`}</div></li>`);
     }
@@ -514,10 +524,10 @@ VIEWS.browse = async (main, parts) => {
     }
     const li = e.target.closest("li[data-key]");
     if (!li) return;
-    const key = li.dataset.key, type = li.dataset.type;
-    if (e.target.closest("[data-open]")) preview(bucket, key, type, !!binfo.public_read);
+    const key = li.dataset.key, type = li.dataset.type, isPublic = !!li.dataset.pub;
+    if (e.target.closest("[data-open]")) preview(bucket, key, type, isPublic);
     else if (e.target.closest("[data-share]")) shareDialog(bucket, key);
-    else if (e.target.closest("[data-imgurl]")) imageDialog(bucket, key, !!binfo.public_read);
+    else if (e.target.closest("[data-imgurl]")) imageDialog(bucket, key, isPublic);
     else if (e.target.closest("[data-public]")) {
       try { const r = await api("POST", "/presign", { bucket, key, method: "GET", expires: 60 }); copyText(r.public_url); }
       catch (ex) { fail(ex); }
@@ -653,6 +663,12 @@ async function uploadFiles(bucket, prefix, files, done) {
     }
   }
   done();
+}
+
+// limitText describes a key's rate limit: 0 = server default, -1 = none.
+function limitText(n) {
+  if (!n) return `<span class="muted">${t("limitDefault")}</span>`;
+  return n < 0 ? t("limitNone") : `${n}${t("perSecond")}`;
 }
 
 // ago formats a time as "3 days ago".
@@ -818,14 +834,23 @@ VIEWS.keys = async (main) => {
   const [keys, buckets] = await Promise.all([api("GET", "/keys"), api("GET", "/buckets")]);
   main.innerHTML = `<div class="head"><h1>${t("keys")}</h1>${ro() ? "" : `<button class="btn primary" id="new-key">+ ${t("newKey")}</button>`}</div>
     <div class="card">${keys.length ? `<table class="table"><thead><tr><th>${t("accessKey")}</th><th>${t("buckets")}</th>
-      <th class="hide-sm">${t("permission")}</th><th class="hide-sm">${t("created")}</th><th></th></tr></thead><tbody>
+      <th class="hide-sm">${t("permission")}</th><th class="hide-sm">${t("rateLimit")}</th><th class="hide-sm">${t("created")}</th><th></th></tr></thead><tbody>
       ${keys.map((k) => `<tr><td><code>${esc(k.access_key)}</code><div class="hint">${esc(k.name || "")}</div></td>
         <td>${k.buckets.includes("*") ? t("allBuckets") : k.buckets.map(esc).join(", ")}</td>
         <td class="hide-sm">${t("perm_" + k.permission)}</td>
+        <td class="hide-sm small">${limitText(k.rate_limit)}${ro() || k.from_env ? "" : ` <button class="btn small" data-limit="${esc(k.access_key)}" data-value="${k.rate_limit || 0}">${t("edit")}</button>`}</td>
         <td class="hide-sm muted small">${k.from_env ? "env" : new Date(k.created).toLocaleDateString()}</td>
         <td class="num">${ro() || k.from_env ? "" : `<button class="btn small danger" data-revoke="${esc(k.access_key)}" data-name="${esc(k.name || k.access_key)}">${t("revoke")}</button>`}</td></tr>`).join("")}
       </tbody></table>` : `<div class="empty">No keys yet.</div>`}</div>`;
 
+  $$("[data-limit]", main).forEach((b) => b.addEventListener("click", async () => {
+    const cur = +b.dataset.value;
+    const done = await formModal(`${t("rateLimit")}: ${b.dataset.limit}`, `<div class="field"><label for="k-limit">${t("rateLimit")}</label>
+      <input id="k-limit" type="number" name="limit" min="-1" placeholder="${t("limitDefault")}" value="${cur ? cur : ""}">
+      <div class="hint">${t("rateLimitHint")}</div></div>`,
+      (f) => api("PUT", "/keys/" + encodeURIComponent(b.dataset.limit), { rate_limit: f.elements.limit.value === "" ? 0 : +f.elements.limit.value }));
+    if (done) { toast(t("ok")); route(); }
+  }));
   $$("[data-revoke]", main).forEach((b) => b.addEventListener("click", async () => {
     if (!(await confirmBox(t("confirmRevoke", { name: b.dataset.name })))) return;
     try { await api("DELETE", "/keys/" + encodeURIComponent(b.dataset.revoke)); toast(t("ok")); route(); } catch (e) { fail(e); }
@@ -838,12 +863,15 @@ VIEWS.keys = async (main) => {
         <option value="readwrite">${t("perm_readwrite")}</option><option value="read">${t("perm_read")}</option><option value="write">${t("perm_write")}</option></select></div>
       <label>${t("buckets")}</label>
       <label class="check"><input type="checkbox" name="all" value="*" checked> ${t("allBuckets")}</label>
-      ${buckets.map((b) => `<label class="check"><input type="checkbox" name="bucket" value="${esc(b.name)}"> ${esc(b.name)}</label>`).join("")}`;
+      ${buckets.map((b) => `<label class="check"><input type="checkbox" name="bucket" value="${esc(b.name)}"> ${esc(b.name)}</label>`).join("")}
+      <div class="field"><label for="k-rate">${t("rateLimit")}</label><input id="k-rate" type="number" name="rate" min="-1" placeholder="${t("limitDefault")}">
+        <div class="hint">${t("rateLimitHint")}</div></div>`;
     const created = await formModal(t("newKey"), fields, async (f) => {
       const all = f.elements.all.checked;
       const picked = $$("input[name=bucket]:checked", f).map((i) => i.value);
       if (!all && !picked.length) throw new Error("Pick at least one bucket.");
-      return api("POST", "/keys", { name: f.elements.kname.value, permission: f.elements.perm.value, buckets: all ? ["*"] : picked });
+      return api("POST", "/keys", { name: f.elements.kname.value, permission: f.elements.perm.value, buckets: all ? ["*"] : picked,
+        rate_limit: f.elements.rate.value === "" ? 0 : +f.elements.rate.value });
     }, t("create"));
     if (created && created.secret_key) showSecret(created);
     route();

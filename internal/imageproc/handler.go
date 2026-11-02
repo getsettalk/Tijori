@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"runtime"
 	"strconv"
@@ -15,7 +16,9 @@ import (
 
 	"github.com/getsettalk/Tijori/internal/auth"
 	"github.com/getsettalk/Tijori/internal/config"
+	"github.com/getsettalk/Tijori/internal/httpx"
 	"github.com/getsettalk/Tijori/internal/quota"
+	"github.com/getsettalk/Tijori/internal/ratelimit"
 	"github.com/getsettalk/Tijori/internal/storage"
 )
 
@@ -32,6 +35,8 @@ type Handler struct {
 	Cache    *Cache
 	Limits   Limits
 	Log      *slog.Logger
+	// RateLimit is shared with the S3 API; nil limits nothing.
+	RateLimit *ratelimit.Policy
 
 	once  sync.Once
 	sem   chan struct{}
@@ -72,7 +77,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusForbidden, err.Error())
 		return
 	}
-	public := h.Quota.Settings(bucket).PublicRead
+	accessKey := ""
+	if res.Key != nil {
+		accessKey = res.Key.AccessKey
+	}
+	httpx.Note(r, bucket, key, accessKey)
+	if ok, wait := h.RateLimit.Allow(r, res.Key); !ok {
+		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
+		jsonError(w, http.StatusTooManyRequests, "too many requests; slow down and try again shortly")
+		return
+	}
+	public := h.Quota.Settings(bucket).PublicKey(key)
 	if k := res.Key; k == nil {
 		if !public {
 			jsonError(w, http.StatusForbidden, "this bucket is private; use a presigned /img/ URL or make the bucket public")

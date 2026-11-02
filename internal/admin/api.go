@@ -16,6 +16,7 @@ import (
 	"github.com/getsettalk/Tijori/internal/auth"
 	"github.com/getsettalk/Tijori/internal/config"
 	"github.com/getsettalk/Tijori/internal/imageproc"
+	"github.com/getsettalk/Tijori/internal/quota"
 	"github.com/getsettalk/Tijori/internal/s3api"
 	"github.com/getsettalk/Tijori/internal/state"
 	"github.com/getsettalk/Tijori/internal/storage"
@@ -121,15 +122,16 @@ func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request, se ctxS
 // ---- dashboard ------------------------------------------------------------
 
 type bucketView struct {
-	Name          string `json:"name"`
-	Created       string `json:"created"`
-	Bytes         int64  `json:"bytes"`
-	Objects       int64  `json:"objects"`
-	PublicRead    bool   `json:"public_read"`
-	MaxSize       int64  `json:"max_size"`
-	MaxObjectSize int64  `json:"max_object_size"`
-	VideoProcess  bool   `json:"video_process"`
-	Managed       bool   `json:"managed"`
+	Name           string   `json:"name"`
+	Created        string   `json:"created"`
+	Bytes          int64    `json:"bytes"`
+	Objects        int64    `json:"objects"`
+	PublicRead     bool     `json:"public_read"`
+	PublicPrefixes []string `json:"public_prefixes"`
+	MaxSize        int64    `json:"max_size"`
+	MaxObjectSize  int64    `json:"max_object_size"`
+	VideoProcess   bool     `json:"video_process"`
+	Managed        bool     `json:"managed"`
 }
 
 func (h *Handler) bucketViews() ([]bucketView, error) {
@@ -143,7 +145,8 @@ func (h *Handler) bucketViews() ([]bucketView, error) {
 		st := h.Quota.Settings(b.Name)
 		u := usage[b.Name]
 		out = append(out, bucketView{Name: b.Name, Created: b.Created.Format(time.RFC3339), Bytes: u.Bytes, Objects: u.Objects,
-			PublicRead: st.PublicRead, MaxSize: st.MaxSize, MaxObjectSize: st.MaxObjectSize, VideoProcess: st.VideoProcess, Managed: st.Managed})
+			PublicRead: st.PublicRead, PublicPrefixes: append([]string{}, st.PublicPrefixes...), MaxSize: st.MaxSize,
+			MaxObjectSize: st.MaxObjectSize, VideoProcess: st.VideoProcess, Managed: st.Managed})
 	}
 	return out, nil
 }
@@ -213,11 +216,12 @@ func (h *Handler) listBuckets(w http.ResponseWriter, r *http.Request) {
 }
 
 type bucketInput struct {
-	Name          string `json:"name"`
-	PublicRead    bool   `json:"public_read"`
-	MaxSize       string `json:"max_size"`
-	MaxObjectSize string `json:"max_object_size"`
-	VideoProcess  bool   `json:"video_process"`
+	Name           string   `json:"name"`
+	PublicRead     bool     `json:"public_read"`
+	PublicPrefixes []string `json:"public_prefixes"`
+	MaxSize        string   `json:"max_size"`
+	MaxObjectSize  string   `json:"max_object_size"`
+	VideoProcess   bool     `json:"video_process"`
 }
 
 func (in bucketInput) settings() (storage.BucketSettings, error) {
@@ -229,7 +233,12 @@ func (in bucketInput) settings() (storage.BucketSettings, error) {
 	if err != nil {
 		return storage.BucketSettings{}, fmt.Errorf("max file size: %w", err)
 	}
-	return storage.BucketSettings{PublicRead: in.PublicRead, MaxSize: int64(ms), MaxObjectSize: int64(mo), VideoProcess: in.VideoProcess}, nil
+	prefixes, err := config.NormalizePrefixes(in.PublicPrefixes)
+	if err != nil {
+		return storage.BucketSettings{}, fmt.Errorf("public folders: %w", err)
+	}
+	return storage.BucketSettings{PublicRead: in.PublicRead, PublicPrefixes: prefixes, MaxSize: int64(ms),
+		MaxObjectSize: int64(mo), VideoProcess: in.VideoProcess}, nil
 }
 
 func (h *Handler) createBucket(w http.ResponseWriter, r *http.Request) {
@@ -311,11 +320,13 @@ type fileView struct {
 	Size     int64  `json:"size"`
 	Modified string `json:"modified"`
 	Type     string `json:"type"`
+	Public   bool   `json:"public"` // anyone may download it
 }
 
-func toFileView(o storage.ObjectInfo) fileView {
+func toFileView(o storage.ObjectInfo, st quota.Settings) fileView {
 	name := path.Base(strings.TrimSuffix(o.Key, "/"))
-	return fileView{Key: o.Key, Name: name, Size: o.Size, Modified: o.LastModified.Format(time.RFC3339), Type: o.ContentType}
+	return fileView{Key: o.Key, Name: name, Size: o.Size, Modified: o.LastModified.Format(time.RFC3339), Type: o.ContentType,
+		Public: st.PublicKey(o.Key)}
 }
 
 // folderStatsLimit caps how many entries one folder summary may visit.
@@ -343,6 +354,7 @@ func (h *Handler) listObjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := map[string]any{"folders": []string{}, "files": []fileView{}}
+	st := h.Quota.Settings(bucket)
 	if search == "" {
 		res, err := h.Store.ListObjects(bucket, storage.ListOptions{Prefix: prefix, Delimiter: "/", Marker: q.Get("marker"), MaxKeys: 500, FetchMeta: true})
 		if err != nil {
@@ -354,7 +366,7 @@ func (h *Handler) listObjects(w http.ResponseWriter, r *http.Request) {
 			if o.Key == prefix {
 				continue // the folder marker of the folder being shown
 			}
-			files = append(files, toFileView(o))
+			files = append(files, toFileView(o, st))
 		}
 		out["files"] = files
 		if res.CommonPrefixes != nil {
@@ -378,7 +390,7 @@ func (h *Handler) listObjects(w http.ResponseWriter, r *http.Request) {
 			scanned++
 			if strings.Contains(strings.ToLower(path.Base(o.Key)), search) {
 				if info, err := h.Store.StatObject(bucket, o.Key); err == nil {
-					files = append(files, toFileView(info))
+					files = append(files, toFileView(info, st))
 				}
 			}
 		}
@@ -419,7 +431,7 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request) {
 		s3Status(w, err)
 		return
 	}
-	writeJSON(w, 200, toFileView(res.Info))
+	writeJSON(w, 200, toFileView(res.Info, h.Quota.Settings(res.Info.Bucket)))
 }
 
 // Chunked uploads: the browser sends big files in small parts so that each
@@ -506,7 +518,7 @@ func (h *Handler) completeUpload(w http.ResponseWriter, r *http.Request) {
 		s3Status(w, err)
 		return
 	}
-	writeJSON(w, 200, toFileView(res.Info))
+	writeJSON(w, 200, toFileView(res.Info, h.Quota.Settings(res.Info.Bucket)))
 }
 
 func (h *Handler) abortUpload(w http.ResponseWriter, r *http.Request) {
@@ -696,7 +708,7 @@ func (h *Handler) presign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := map[string]any{"url": u, "expires_at": time.Now().Add(exp).Format(time.RFC3339), "signed_with": k.AccessKey}
-	if h.Quota.Settings(in.Bucket).PublicRead {
+	if h.Quota.Settings(in.Bucket).PublicKey(in.Key) {
 		out["public_url"] = target
 	}
 	writeJSON(w, 200, out)
@@ -708,7 +720,7 @@ func (h *Handler) listKeys(w http.ResponseWriter, r *http.Request, se ctxSession
 	out := []map[string]any{}
 	for _, k := range h.DB.Keys() {
 		out = append(out, map[string]any{"access_key": k.AccessKey, "name": k.Name, "buckets": k.Buckets,
-			"permission": k.Permission, "created": k.CreatedAt, "from_env": k.FromEnv})
+			"permission": k.Permission, "created": k.CreatedAt, "from_env": k.FromEnv, "rate_limit": k.RateLimit})
 	}
 	writeJSON(w, 200, out)
 }
@@ -718,9 +730,14 @@ func (h *Handler) createKey(w http.ResponseWriter, r *http.Request) {
 		Name       string   `json:"name"`
 		Buckets    []string `json:"buckets"`
 		Permission string   `json:"permission"`
+		RateLimit  int      `json:"rate_limit"`
 	}
 	if err := decodeJSON(r, &in); err != nil {
 		apiError(w, 400, "bad request")
+		return
+	}
+	if err := validRateLimit(in.RateLimit); err != nil {
+		apiError(w, 400, err.Error())
 		return
 	}
 	k, err := auth.NewKey(strings.TrimSpace(in.Name), in.Buckets, in.Permission)
@@ -728,12 +745,43 @@ func (h *Handler) createKey(w http.ResponseWriter, r *http.Request) {
 		apiError(w, 400, err.Error())
 		return
 	}
+	k.RateLimit = in.RateLimit
 	if err := h.DB.AddKey(k); err != nil {
 		apiError(w, 500, err.Error())
 		return
 	}
 	h.Log.Info("access key created from admin panel", "key", k.AccessKey, "name", k.Name)
 	writeJSON(w, 201, map[string]any{"access_key": k.AccessKey, "secret_key": k.SecretKey, "buckets": k.Buckets, "permission": k.Permission})
+}
+
+// validRateLimit accepts 0 (server default), -1 (no limit) or a number of
+// requests per second.
+func validRateLimit(n int) error {
+	if n < -1 || n > 100_000 {
+		return errors.New("rate limit must be -1 (no limit), 0 (server default) or 1 to 100000 requests per second")
+	}
+	return nil
+}
+
+// updateKey changes a key's rate limit.
+func (h *Handler) updateKey(w http.ResponseWriter, r *http.Request, id string) {
+	var in struct {
+		RateLimit int `json:"rate_limit"`
+	}
+	if err := decodeJSON(r, &in); err != nil {
+		apiError(w, 400, "bad request")
+		return
+	}
+	if err := validRateLimit(in.RateLimit); err != nil {
+		apiError(w, 400, err.Error())
+		return
+	}
+	if err := h.DB.UpdateKey(id, func(k *state.AccessKey) { k.RateLimit = in.RateLimit }); err != nil {
+		apiError(w, 400, err.Error())
+		return
+	}
+	h.Log.Info("access key rate limit changed from admin panel", "key", id, "rate_limit", in.RateLimit)
+	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
 func (h *Handler) revokeKey(w http.ResponseWriter, r *http.Request, id string) {

@@ -7,11 +7,12 @@ then `/etc/tijori/tijori.toml`. Run `tijori <command> -h` for all flags.
 | --- | --- |
 | `tijori` or `tijori serve` | Start the server. |
 | `tijori init` | Create the config, data folder, admin password and first key. Flags: `--data-dir`, `--listen`, `--public-url`, `--admin-password`, `--yes` (no questions). Safe to run again. |
-| `tijori key create` | New key. `--name laravel --buckets photos,docs --permission readwrite\|read\|write`. Prints the secret once. |
-| `tijori key list` | List keys (never shows secrets). |
+| `tijori key create` | New key. `--name laravel --buckets photos,docs --permission readwrite\|read\|write`, optional `--rate-limit 100` (requests per second, `-1` = no limit). Prints the secret once. |
+| `tijori key list` | List keys with their rate limit (never shows secrets). |
+| `tijori key limit ACCESS_KEY N` | Change a key's requests per second: `N`, `0` for the `[limits] key_rps` default, or `-1` for no limit. |
 | `tijori key revoke ACCESS_KEY` | Delete a key; apps using it get `AccessDenied`. |
-| `tijori bucket create NAME` | `--public`, `--max-size 10GB`, `--max-object-size 500MB`. |
-| `tijori bucket list` | Buckets with file counts, size, quota, public flag. |
+| `tijori bucket create NAME` | `--public`, `--public-folders avatars/,products/` (only these folders are public), `--max-size 10GB`, `--max-object-size 500MB`. |
+| `tijori bucket list` | Buckets with file counts, size, quota, and what is public. |
 | `tijori bucket delete NAME` | Only if empty; `--force` deletes the files too. |
 | `tijori usage [--recalc]` | Space used per bucket. `--recalc` recounts from disk. |
 | `tijori admin password` | Reset a password. `--user NAME`, `--password PW`, `--readonly` for a view-only user. |
